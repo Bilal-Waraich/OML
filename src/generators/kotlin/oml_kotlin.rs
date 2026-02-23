@@ -16,17 +16,22 @@ impl KotlinGenerator {
 }
 
 impl Generate for KotlinGenerator {
-    fn generate(&self, oml_object: &OmlObject, file_name: &str) -> Result<String, Box<dyn Error>> {
+    fn generate(&self, oml_objects: &[OmlObject], file_name: &str) -> Result<String, Box<dyn Error>> {
         let mut kt_file = String::new();
 
         writeln!(kt_file, "// This file has been generated from {}.oml", file_name)?;
         writeln!(kt_file)?;
 
-        match &oml_object.oml_type {
-            ObjectType::ENUM => generate_enum(oml_object, &mut kt_file)?,
-            ObjectType::CLASS => generate_class(oml_object, &mut kt_file, self.use_data_class)?,
-            ObjectType::STRUCT => generate_class(oml_object, &mut kt_file, true)?,
-            ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
+        for (i, oml_object) in oml_objects.iter().enumerate() {
+            match &oml_object.oml_type {
+                ObjectType::ENUM => generate_enum(oml_object, &mut kt_file)?,
+                ObjectType::CLASS => generate_class(oml_object, &mut kt_file, self.use_data_class)?,
+                ObjectType::STRUCT => generate_class(oml_object, &mut kt_file, true)?,
+                ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
+            }
+            if i < oml_objects.len() - 1 {
+                writeln!(kt_file)?;
+            }
         }
 
         Ok(kt_file)
@@ -215,17 +220,17 @@ fn write_static_property(
 #[inline]
 fn convert_type(var_type: &str) -> String {
     match var_type {
-        "int8" | "int16" | "int32" => "Int",
-        "int64" => "Long",
-        "uint8" | "uint16" | "uint32" => "UInt",
-        "uint64" => "ULong",
-        "float" => "Float",
-        "double" => "Double",
-        "bool" => "Boolean",
-        "string" => "String",
-        "char" => "Char",
-        _ => ""
-    }.to_string()
+        "int8" | "int16" | "int32" => "Int".to_string(),
+        "int64" => "Long".to_string(),
+        "uint8" | "uint16" | "uint32" => "UInt".to_string(),
+        "uint64" => "ULong".to_string(),
+        "float" => "Float".to_string(),
+        "double" => "Double".to_string(),
+        "bool" => "Boolean".to_string(),
+        "string" => "String".to_string(),
+        "char" => "Char".to_string(),
+        other => other.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -237,11 +242,11 @@ mod tests {
     };
 
     fn oml_to_kotlin(oml_object: &OmlObject, file_name: &str) -> Result<String, Box<dyn std::error::Error>> {
-        KotlinGenerator::new(true).generate(oml_object, file_name)
+        KotlinGenerator::new(true).generate(std::slice::from_ref(oml_object), file_name)
     }
 
     fn oml_to_kotlin_no_data(oml_object: &OmlObject, file_name: &str) -> Result<String, Box<dyn std::error::Error>> {
-        KotlinGenerator::new(false).generate(oml_object, file_name)
+        KotlinGenerator::new(false).generate(std::slice::from_ref(oml_object), file_name)
     }
 
     // ========== ENUM GENERATION TESTS ==========
@@ -724,8 +729,9 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_unknown_type() {
-        assert_eq!(convert_type("foobar"), "");
+    fn test_convert_custom_type() {
+        assert_eq!(convert_type("Address"), "Address");
+        assert_eq!(convert_type("Person"), "Person");
     }
 
     // ========== FULL OUTPUT TESTS ==========

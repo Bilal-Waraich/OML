@@ -15,17 +15,31 @@ impl PythonGenerator {
 }
 
 impl Generate for PythonGenerator {
-    fn generate(&self, oml_object: &OmlObject, file_name: &str) -> Result<String, Box<dyn Error>> {
+    fn generate(&self, oml_objects: &[OmlObject], file_name: &str) -> Result<String, Box<dyn Error>> {
         let mut py_file = String::new();
 
         writeln!(py_file, "# This file has been generated from {}.oml", file_name)?;
         writeln!(py_file)?;
 
-        match &oml_object.oml_type {
-            ObjectType::ENUM => generate_enum(oml_object, &mut py_file)?,
-            ObjectType::CLASS => generate_class(oml_object, &mut py_file, self.use_data_class)?,
-            ObjectType::STRUCT => generate_class(oml_object, &mut py_file, true)?,
-            ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
+        // Collect imports needed across all objects
+        let imports = collect_imports(oml_objects, self.use_data_class);
+        if !imports.is_empty() {
+            for import in &imports {
+                writeln!(py_file, "{}", import)?;
+            }
+            writeln!(py_file)?;
+        }
+
+        for (i, oml_object) in oml_objects.iter().enumerate() {
+            match &oml_object.oml_type {
+                ObjectType::ENUM => generate_enum(oml_object, &mut py_file)?,
+                ObjectType::CLASS => generate_class(oml_object, &mut py_file, self.use_data_class)?,
+                ObjectType::STRUCT => generate_class(oml_object, &mut py_file, true)?,
+                ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
+            }
+            if i < oml_objects.len() - 1 {
+                writeln!(py_file)?;
+            }
         }
 
         Ok(py_file)
@@ -34,10 +48,47 @@ impl Generate for PythonGenerator {
     fn extension(&self) -> &str { "py" }
 }
 
-fn generate_enum(oml_object: &OmlObject, py_file: &mut String) -> Result<(), std::fmt::Error> {
-    writeln!(py_file, "from enum import Enum")?;
-    writeln!(py_file)?;
+fn collect_imports(oml_objects: &[OmlObject], use_data_class: bool) -> Vec<String> {
+    let mut imports: Vec<String> = Vec::new();
 
+    let has_enum = oml_objects.iter().any(|o| o.oml_type == ObjectType::ENUM);
+    let has_struct = oml_objects.iter().any(|o| o.oml_type == ObjectType::STRUCT);
+    let has_class_dataclass = use_data_class && oml_objects.iter().any(|o| o.oml_type == ObjectType::CLASS);
+    let needs_dataclass = has_struct || has_class_dataclass;
+
+    // For dataclass objects, check if any have static vars
+    let needs_classvar = oml_objects.iter().any(|o| {
+        let is_dc = o.oml_type == ObjectType::STRUCT || (use_data_class && o.oml_type == ObjectType::CLASS);
+        is_dc && o.variables.iter().any(|v| v.var_mod.contains(&VariableModifier::STATIC))
+    });
+
+    let needs_optional = oml_objects.iter().any(|o|
+        o.oml_type != ObjectType::ENUM &&
+        o.variables.iter().any(|v| v.var_mod.contains(&VariableModifier::OPTIONAL))
+    );
+
+    if has_enum {
+        imports.push("from enum import Enum".to_string());
+    }
+    if needs_dataclass {
+        imports.push("from dataclasses import dataclass, field".to_string());
+    }
+
+    let mut typing_imports: Vec<&str> = Vec::new();
+    if needs_classvar {
+        typing_imports.push("ClassVar");
+    }
+    if needs_optional {
+        typing_imports.push("Optional");
+    }
+    if !typing_imports.is_empty() {
+        imports.push(format!("from typing import {}", typing_imports.join(", ")));
+    }
+
+    imports
+}
+
+fn generate_enum(oml_object: &OmlObject, py_file: &mut String) -> Result<(), std::fmt::Error> {
     writeln!(py_file, "class {}(Enum):", oml_object.name)?;
 
     if oml_object.variables.is_empty() {
@@ -76,21 +127,8 @@ fn generate_data_class(oml_object: &OmlObject, py_file: &mut String) -> Result<(
         .filter(|v| !v.var_mod.contains(&VariableModifier::STATIC))
         .collect();
 
-    let has_optional = instance_vars.iter()
-        .any(|v| v.var_mod.contains(&VariableModifier::OPTIONAL));
-
     let all_const = !instance_vars.is_empty() && instance_vars.iter()
         .all(|v| v.var_mod.contains(&VariableModifier::CONST));
-
-    // Imports
-    writeln!(py_file, "from dataclasses import dataclass, field")?;
-    if !static_vars.is_empty() {
-        writeln!(py_file, "from typing import ClassVar")?;
-    }
-    if has_optional {
-        writeln!(py_file, "from typing import Optional")?;
-    }
-    writeln!(py_file)?;
 
     if all_const {
         writeln!(py_file, "@dataclass(frozen=True)")?;
@@ -144,15 +182,6 @@ fn generate_regular_class(oml_object: &OmlObject, py_file: &mut String) -> Resul
     let instance_vars: Vec<&Variable> = vars.iter()
         .filter(|v| !v.var_mod.contains(&VariableModifier::STATIC))
         .collect();
-
-    let has_optional = instance_vars.iter()
-        .any(|v| v.var_mod.contains(&VariableModifier::OPTIONAL));
-
-    // Imports
-    if has_optional {
-        writeln!(py_file, "from typing import Optional")?;
-        writeln!(py_file)?;
-    }
 
     writeln!(py_file, "class {}:", oml_object.name)?;
 
@@ -262,7 +291,7 @@ mod tests {
 
     fn to_python(oml_object: &OmlObject, use_data_class: bool) -> String {
         PythonGenerator::new(use_data_class)
-            .generate(oml_object, "test")
+            .generate(std::slice::from_ref(oml_object), "test")
             .unwrap()
     }
 
@@ -515,7 +544,7 @@ mod tests {
             name: "Bad".to_string(),
             variables: vec![],
         };
-        let result = PythonGenerator::new(false).generate(&obj, "test");
+        let result = PythonGenerator::new(false).generate(std::slice::from_ref(&obj), "test");
         assert!(result.is_err());
     }
 }

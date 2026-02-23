@@ -19,11 +19,10 @@ fn generate_and_write(oml_path: &str, file_name: &str) -> String {
     let generator = CppGenerator;
 
     let path = Path::new(oml_path);
-    let mut oml_objects = OmlObject::get_from_file(path)
+    let oml_objects = OmlObject::get_from_file(path)
         .expect(&format!("Failed to parse OML file: {}", oml_path));
-    let oml_object = oml_objects.remove(0);
 
-    let cpp_output = generator.generate(&oml_object, file_name)
+    let cpp_output = generator.generate(&oml_objects, file_name)
         .expect(&format!("Failed to generate C++ for: {}", file_name));
 
     let output_path = format!("{}/{}.{}", TEST_RESULTS_DIR, file_name, generator.extension());
@@ -35,7 +34,7 @@ fn generate_and_write(oml_path: &str, file_name: &str) -> String {
 
 #[test]
 fn test_person_class_generates_cpp_file() {
-    let output = generate_and_write("src/cpp/test_oml_files/person.oml", "Person");
+    let output = generate_and_write("src/generators/cpp/test_oml_files/person.oml", "Person");
 
     // Header guards
     assert!(output.contains("#ifndef PERSON_H"));
@@ -84,7 +83,7 @@ fn test_person_class_generates_cpp_file() {
 
 #[test]
 fn test_vehicle_class_generates_cpp_file() {
-    let output = generate_and_write("src/cpp/test_oml_files/vehicle.oml", "Vehicle");
+    let output = generate_and_write("src/generators/cpp/test_oml_files/vehicle.oml", "Vehicle");
 
     // Class structure
     assert!(output.contains("class Vehicle {"));
@@ -112,7 +111,7 @@ fn test_vehicle_class_generates_cpp_file() {
 
 #[test]
 fn test_point_struct_generates_cpp_file() {
-    let output = generate_and_write("src/cpp/test_oml_files/point.oml", "Point");
+    let output = generate_and_write("src/generators/cpp/test_oml_files/point.oml", "Point");
 
     // Struct declaration
     assert!(output.contains("struct Point {"));
@@ -147,7 +146,7 @@ fn test_color_enum_generates_cpp_file() {
     };
 
     let generator = CppGenerator;
-    let output = generator.generate(&oml_object, "Color").unwrap();
+    let output = generator.generate(std::slice::from_ref(&oml_object), "Color").unwrap();
 
     let output_path = format!("{}/Color.h", TEST_RESULTS_DIR);
     fs::write(&output_path, &output).expect("Failed to write Color.h");
