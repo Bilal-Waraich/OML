@@ -1,5 +1,7 @@
 /target
 .idea
 oml_ideas
+oml_output
+
 test_results
 .claude

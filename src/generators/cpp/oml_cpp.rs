@@ -8,7 +8,7 @@ use std::fmt::Write;
 pub struct CppGenerator;
 
 impl Generate for CppGenerator {
-    fn generate(&self, oml_object: &OmlObject, file_name: &str) -> Result<String, Box<dyn Error>> {
+    fn generate(&self, oml_objects: &[OmlObject], file_name: &str) -> Result<String, Box<dyn Error>> {
         let mut cpp_file = String::new();
         let header_guard = format!("{}_H", file_name.to_uppercase());
 
@@ -17,10 +17,26 @@ impl Generate for CppGenerator {
         writeln!(cpp_file, "#define {}", header_guard)?;
         writeln!(cpp_file)?;
 
-        match &oml_object.oml_type {
-            ObjectType::ENUM => generate_enum(oml_object, &mut cpp_file)?,
-            ObjectType::CLASS | ObjectType::STRUCT => generate_class_or_struct(oml_object, &mut cpp_file)?,
-            ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
+        let has_class_or_struct = oml_objects.iter().any(|o|
+            o.oml_type == ObjectType::CLASS || o.oml_type == ObjectType::STRUCT
+        );
+
+        if has_class_or_struct {
+            writeln!(cpp_file, "#include <cstdint>")?;
+            writeln!(cpp_file, "#include <string>")?;
+            writeln!(cpp_file, "#include <optional>")?;
+            writeln!(cpp_file, "#include <utility>\n")?;
+        }
+
+        for (i, oml_object) in oml_objects.iter().enumerate() {
+            match &oml_object.oml_type {
+                ObjectType::ENUM => generate_enum(oml_object, &mut cpp_file)?,
+                ObjectType::CLASS | ObjectType::STRUCT => generate_class_or_struct(oml_object, &mut cpp_file)?,
+                ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
+            }
+            if i < oml_objects.len() - 1 {
+                writeln!(cpp_file)?;
+            }
         }
 
         writeln!(cpp_file, "#endif // {}\n", header_guard)?;
@@ -61,11 +77,6 @@ fn generate_class_or_struct(
         ObjectType::STRUCT => "struct",
         _ => return Err(std::fmt::Error)
     };
-
-    writeln!(cpp_file, "#include <cstdint>")?;
-    writeln!(cpp_file, "#include <string>")?;
-    writeln!(cpp_file, "#include <optional>")?;
-    writeln!(cpp_file, "#include <utility>\n")?;
 
     writeln!(cpp_file, "{} {} {{", oml_type, oml_object.name)?;
 
@@ -125,21 +136,21 @@ fn generate_visibility_vars(
 #[inline]
 fn convert_type(var_type: &str) -> String {
     match var_type {
-        "int8" => "int8_t",
-        "int16" => "int16_t",
-        "int32" => "int32_t",
-        "int64" => "int64_t",
-        "uint8" => "uint8_t",
-        "uint16" => "uint16_t",
-        "uint32" => "uint32_t",
-        "uint64" => "uint64_t",
-        "float" => "float",
-        "double" => "double",
-        "bool" => "bool",
-        "string" => "std::string",
-        "char" => "char",
-        _ => ""
-    }.to_string()
+        "int8" => "int8_t".to_string(),
+        "int16" => "int16_t".to_string(),
+        "int32" => "int32_t".to_string(),
+        "int64" => "int64_t".to_string(),
+        "uint8" => "uint8_t".to_string(),
+        "uint16" => "uint16_t".to_string(),
+        "uint32" => "uint32_t".to_string(),
+        "uint64" => "uint64_t".to_string(),
+        "float" => "float".to_string(),
+        "double" => "double".to_string(),
+        "bool" => "bool".to_string(),
+        "string" => "std::string".to_string(),
+        "char" => "char".to_string(),
+        other => other.to_string(),
+    }
 }
 
 fn convert_modifiers_and_type(
@@ -361,7 +372,7 @@ mod tests {
     };
 
     fn oml_to_cpp(oml_object: &OmlObject, file_name: &str) -> Result<String, Box<dyn std::error::Error>> {
-        CppGenerator.generate(oml_object, file_name)
+        CppGenerator.generate(std::slice::from_ref(oml_object), file_name)
     }
 
     // ========== ENUM GENERATION TESTS ==========
@@ -678,10 +689,9 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_unknown_type() {
-        assert_eq!(convert_type("CustomType"), "");
-        assert_eq!(convert_type("UnknownType"), "");
-        assert_eq!(convert_type(""), "");
+    fn test_convert_custom_type() {
+        assert_eq!(convert_type("CustomType"), "CustomType");
+        assert_eq!(convert_type("Address"), "Address");
     }
 
     // ========== FULL FILE GENERATION TESTS ==========
@@ -717,10 +727,8 @@ mod tests {
         // Check comment
         assert!(result.contains("// This file has been generated from Color.oml"));
 
-        // Check includes
-        assert!(result.contains("#include <cstdint>"));
-        assert!(result.contains("#include <string>"));
-        assert!(result.contains("#include <optional>"));
+        // Enum-only files should not have includes
+        assert!(!result.contains("#include"));
 
         // Check enum content
         assert!(result.contains("enum class Color {"));

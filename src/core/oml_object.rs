@@ -1,4 +1,5 @@
 use std::cmp::PartialEq;
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use regex::Regex;
@@ -54,6 +55,42 @@ impl OmlObject {
     const CLASS_NAME: &'static str = "class";
     const ENUM_NAME: &'static str = "enum";
     const STRUCT_NAME: &'static str = "struct";
+
+    pub const BUILTIN_TYPES: &'static [&'static str] = &[
+        "int8", "int16", "int32", "int64",
+        "uint8", "uint16", "uint32", "uint64",
+        "float", "double", "bool", "string", "char",
+    ];
+
+    pub fn is_builtin_type(var_type: &str) -> bool {
+        Self::BUILTIN_TYPES.contains(&var_type)
+    }
+
+    /// Validates that any non-built-in type used as a variable type in these
+    /// objects actually corresponds to another object defined in the same set.
+    pub fn validate_custom_types(objects: &[Self]) -> Result<(), Box<dyn std::error::Error>> {
+        let object_names: HashSet<&str> = objects.iter().map(|o| o.name.as_str()).collect();
+
+        for obj in objects {
+            // Enums don't have typed variables
+            if obj.oml_type == ObjectType::ENUM {
+                continue;
+            }
+            for var in &obj.variables {
+                if !var.var_type.is_empty()
+                    && !Self::is_builtin_type(&var.var_type)
+                    && !object_names.contains(var.var_type.as_str())
+                {
+                    return Err(format!(
+                        "Type '{}' used in object '{}' is not a built-in type and no object with that name is defined in the same file",
+                        var.var_type, obj.name
+                    ).into());
+                }
+            }
+        }
+
+        Ok(())
+    }
 
     pub fn get_from_file(path: &Path) -> Result<Vec<Self>, Box<dyn std::error::Error>> {
         let content = fs::read_to_string(path)?;
