@@ -1,5 +1,5 @@
 use crate::core::oml_object::{
-    OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier
+    OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
 use crate::core::generate::Generate;
 use std::error::Error;
@@ -179,7 +179,7 @@ fn write_property_param(
         write!(kt_file, "var ")?;
     }
 
-    let kt_type = convert_type(var.var_type.as_str());
+    let kt_type = type_annotation(&var.var_type, &var.array_kind);
 
     write!(kt_file, "{}: ", var.name)?;
 
@@ -206,7 +206,7 @@ fn write_static_property(
         write!(kt_file, "var ")?;
     }
 
-    let kt_type = convert_type(var.var_type.as_str());
+    let kt_type = type_annotation(&var.var_type, &var.array_kind);
 
     if var.var_mod.contains(&VariableModifier::OPTIONAL) {
         writeln!(kt_file, "{}: {}? = null", var.name, kt_type)?;
@@ -233,12 +233,21 @@ fn convert_type(var_type: &str) -> String {
     }
 }
 
+fn type_annotation(var_type: &str, array_kind: &ArrayKind) -> String {
+    let base = convert_type(var_type);
+    match array_kind {
+        ArrayKind::None => base,
+        ArrayKind::Static(_) => format!("Array<{}>", base),
+        ArrayKind::Dynamic => format!("MutableList<{}>", base),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::generate::Generate;
     use crate::core::oml_object::{
-        OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier
+        OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
     };
 
     fn oml_to_kotlin(oml_object: &OmlObject, file_name: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -261,18 +270,21 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "Red".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "Green".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "Blue".to_string(),
                 },
             ],
@@ -297,6 +309,7 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "Only".to_string(),
                 },
             ],
@@ -333,12 +346,14 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "name".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "age".to_string(),
                 },
             ],
@@ -360,12 +375,14 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "name".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "age".to_string(),
                 },
             ],
@@ -388,12 +405,14 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "double".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "x".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "double".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "y".to_string(),
                 },
             ],
@@ -427,18 +446,21 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "name".to_string(),
                 },
                 Variable {
                     var_mod: vec![VariableModifier::OPTIONAL],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "email".to_string(),
                 },
                 Variable {
                     var_mod: vec![VariableModifier::OPTIONAL],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "age".to_string(),
                 },
             ],
@@ -460,12 +482,14 @@ mod tests {
                     var_mod: vec![VariableModifier::OPTIONAL],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "optional_first".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "required".to_string(),
                 },
             ],
@@ -488,6 +512,7 @@ mod tests {
                     var_mod: vec![VariableModifier::CONST],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "name".to_string(),
                 },
             ],
@@ -508,6 +533,7 @@ mod tests {
                     var_mod: vec![VariableModifier::MUT],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "name".to_string(),
                 },
             ],
@@ -527,6 +553,7 @@ mod tests {
                     var_mod: vec![VariableModifier::CONST, VariableModifier::MUT],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "value".to_string(),
                 },
             ],
@@ -547,12 +574,14 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "name".to_string(),
                 },
                 Variable {
                     var_mod: vec![VariableModifier::STATIC],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "count".to_string(),
                 },
             ],
@@ -573,6 +602,7 @@ mod tests {
                     var_mod: vec![VariableModifier::STATIC, VariableModifier::CONST],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "MAX".to_string(),
                 },
             ],
@@ -593,6 +623,7 @@ mod tests {
                     var_mod: vec![VariableModifier::STATIC, VariableModifier::OPTIONAL],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "instance".to_string(),
                 },
             ],
@@ -615,6 +646,7 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "x".to_string(),
                 },
             ],
@@ -636,6 +668,7 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "x".to_string(),
                 },
             ],
@@ -655,6 +688,7 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PROTECTED,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "x".to_string(),
                 },
             ],
@@ -674,18 +708,21 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "pub_val".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PROTECTED,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "prot_val".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "priv_val".to_string(),
                 },
             ],
@@ -770,6 +807,7 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "bar".to_string(),
                 },
             ],
@@ -804,18 +842,21 @@ mod tests {
                     var_mod: vec![VariableModifier::CONST],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "id".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "count".to_string(),
                 },
                 Variable {
                     var_mod: vec![VariableModifier::OPTIONAL],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "description".to_string(),
                 },
             ],
@@ -843,6 +884,7 @@ mod tests {
                 var_mod: if i % 3 == 0 { vec![VariableModifier::OPTIONAL] } else { vec![] },
                 visibility: VariableVisibility::PRIVATE,
                 var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                 name: format!("var_{}", i),
             });
         }
@@ -867,6 +909,7 @@ mod tests {
             var_mod: vec![],
             visibility: VariableVisibility::PUBLIC,
             var_type: "".to_string(),
+                    array_kind: ArrayKind::None,
             name: format!("Variant{}", i),
         }).collect();
 
@@ -897,6 +940,7 @@ mod tests {
                 var_mod: vec![],
                 visibility: VariableVisibility::PUBLIC,
                 var_type: oml_type.to_string(),
+                    array_kind: ArrayKind::None,
                 name: format!("field_{}", i),
             }
         }).collect();
@@ -925,6 +969,7 @@ mod tests {
                     var_mod: vec![VariableModifier::CONST, VariableModifier::OPTIONAL],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "value".to_string(),
                 },
             ],
@@ -944,6 +989,7 @@ mod tests {
                     var_mod: vec![VariableModifier::STATIC, VariableModifier::CONST, VariableModifier::OPTIONAL],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "everything".to_string(),
                 },
             ],

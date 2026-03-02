@@ -29,11 +29,19 @@ pub enum VariableVisibility {
     PROTECTED
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArrayKind {
+    None,
+    Static(u32),  // type[N] — N > 0 required
+    Dynamic,       // list type
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Variable {
     pub var_mod: Vec<VariableModifier>,
     pub visibility: VariableVisibility,
     pub var_type: String,
+    pub array_kind: ArrayKind,
     pub name: String,
 }
 
@@ -241,11 +249,39 @@ impl OmlObject {
 
     #[inline]
     fn is_type(token: &str) -> bool {
+        // Recognise static array tokens like "int32[4]"
+        if let Some(bracket_pos) = token.find('[') {
+            if token.ends_with(']') {
+                let base  = &token[..bracket_pos];
+                let inner = &token[bracket_pos + 1..token.len() - 1];
+                if inner.parse::<u32>().map(|n| n > 0).unwrap_or(false) {
+                    return Self::is_builtin_type(base) || Self::is_valid_name(base);
+                }
+            }
+            return false; // malformed bracket → not a type
+        }
         matches!(token,
             "int8" | "int16" | "int32" | "int64" |
             "uint8" | "uint16" | "uint32" | "uint64" |
             "float" | "double" | "bool" | "string" | "char"
         ) || Self::is_valid_name(token)
+    }
+
+    /// Parses a `type[N]` token into `(base_type, N)`.  Returns `None` if the
+    /// token does not match the pattern or if N is zero.
+    fn parse_array_type(token: &str) -> Option<(String, u32)> {
+        let bp = token.find('[')?;
+        if !token.ends_with(']') {
+            return None;
+        }
+        let base  = &token[..bp];
+        let inner = &token[bp + 1..token.len() - 1];
+        let size: u32 = inner.parse().ok().filter(|&n| n > 0)?;
+        if Self::is_builtin_type(base) || Self::is_valid_name(base) {
+            Some((base.to_string(), size))
+        } else {
+            None
+        }
     }
 
     fn extract_object_variables(lines: Vec<String>) -> Result<Vec<Variable>, Box<dyn std::error::Error>> {
@@ -281,9 +317,10 @@ impl OmlObject {
         let mut modifiers: Vec<VariableModifier> = Vec::new();
         let mut var_type: Option<String> = None;
         let mut var_name: Option<String> = None;
+        let mut array_kind = ArrayKind::None;
         let mut type_seen = false;
 
-        for token in tokens {
+        for token in &tokens {
             if let Some(vis) = Self::parse_visibility(token) {
                 if type_seen {
                     return Err(format!(
@@ -308,6 +345,43 @@ impl OmlObject {
                 }
                 modifiers.push(modifier);
                 continue;
+            }
+
+            // "list" keyword → dynamic array; the next token will be the element type
+            if *token == "list" && !type_seen {
+                if array_kind != ArrayKind::None {
+                    return Err("Multiple array kind specifiers".to_string());
+                }
+                array_kind = ArrayKind::Dynamic;
+                continue;
+            }
+
+            // Detect bare "[]" and give a helpful error
+            if token.contains('[') && token.ends_with(']') && !type_seen {
+                let bp = token.find('[').unwrap();
+                let inner = &token[bp + 1..token.len() - 1];
+                if inner.is_empty() {
+                    let base = &token[..bp];
+                    return Err(format!(
+                        "Static arrays require a size: use '{base}[N]' (N > 0), or 'list {base}' for a dynamic array"
+                    ));
+                }
+                if inner.parse::<u32>().map(|n| n == 0).unwrap_or(false) {
+                    return Err(format!("Array size must be greater than 0 in '{}'", token));
+                }
+            }
+
+            // "type[N]" → static array
+            if var_type.is_none() && !type_seen {
+                if let Some((base_type, size)) = Self::parse_array_type(token) {
+                    if array_kind == ArrayKind::Dynamic {
+                        return Err("Cannot combine 'list' with static array syntax 'type[N]'".to_string());
+                    }
+                    var_type = Some(base_type);
+                    array_kind = ArrayKind::Static(size);
+                    type_seen = true;
+                    continue;
+                }
             }
 
             if Self::is_type(token) && var_type.is_none() {
@@ -336,6 +410,7 @@ impl OmlObject {
             var_mod: modifiers,
             visibility: final_visibility,
             var_type: final_type,
+            array_kind,
             name: final_name,
         })
     }
@@ -543,6 +618,94 @@ mod test {
         assert!(result.is_err());
     }
 
+    // ── array / list tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_static_array() {
+        let result = OmlObject::parse_variable_declaration("uint16[4] scores");
+        assert!(result.is_ok(), "Failed: {:?}", result);
+        let var = result.unwrap();
+        assert_eq!(var.var_type, "uint16");
+        assert_eq!(var.name, "scores");
+        assert_eq!(var.array_kind, ArrayKind::Static(4));
+    }
+
+    #[test]
+    fn test_parse_dynamic_list() {
+        let result = OmlObject::parse_variable_declaration("list string tags");
+        assert!(result.is_ok(), "Failed: {:?}", result);
+        let var = result.unwrap();
+        assert_eq!(var.var_type, "string");
+        assert_eq!(var.name, "tags");
+        assert_eq!(var.array_kind, ArrayKind::Dynamic);
+    }
+
+    #[test]
+    fn test_parse_static_array_with_modifiers() {
+        let result = OmlObject::parse_variable_declaration("public const int32[10] ids");
+        assert!(result.is_ok(), "Failed: {:?}", result);
+        let var = result.unwrap();
+        assert_eq!(var.var_type, "int32");
+        assert_eq!(var.array_kind, ArrayKind::Static(10));
+        assert!(var.var_mod.contains(&VariableModifier::CONST));
+        assert!(matches!(var.visibility, VariableVisibility::PUBLIC));
+    }
+
+    #[test]
+    fn test_parse_dynamic_list_with_modifiers() {
+        let result = OmlObject::parse_variable_declaration("private list int64 values");
+        assert!(result.is_ok(), "Failed: {:?}", result);
+        let var = result.unwrap();
+        assert_eq!(var.var_type, "int64");
+        assert_eq!(var.array_kind, ArrayKind::Dynamic);
+    }
+
+    #[test]
+    fn test_parse_bare_brackets_error() {
+        let result = OmlObject::parse_variable_declaration("uint16[] x");
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("Static arrays require a size"), "Got: {}", msg);
+    }
+
+    #[test]
+    fn test_parse_zero_size_array_error() {
+        let result = OmlObject::parse_variable_declaration("int32[0] x");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_list_with_array_notation_error() {
+        let result = OmlObject::parse_variable_declaration("list uint16[4] x");
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("Cannot combine"), "Got: {}", msg);
+    }
+
+    #[test]
+    fn test_scan_file_with_arrays() {
+        let content = r#"
+            class ExampleArrays {
+                uint16[4]   static_array;
+                list uint16 dynamic_array;
+                list string tags;
+            }
+        "#;
+
+        let result = OmlObject::scan_file(content.to_string());
+        assert!(result.is_ok());
+        let objects = result.unwrap();
+        assert_eq!(objects.len(), 1);
+        let vars = &objects[0].variables;
+        assert_eq!(vars.len(), 3);
+        assert_eq!(vars[0].var_type, "uint16");
+        assert_eq!(vars[0].array_kind, ArrayKind::Static(4));
+        assert_eq!(vars[1].var_type, "uint16");
+        assert_eq!(vars[1].array_kind, ArrayKind::Dynamic);
+        assert_eq!(vars[2].var_type, "string");
+        assert_eq!(vars[2].array_kind, ArrayKind::Dynamic);
+    }
+
     #[cfg(test)]
     mod comment_tests {
         use super::*;
@@ -568,8 +731,8 @@ mod test {
             "#;
 
             let vars = vec![
-                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), name: String::from("x") },
-                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), name: String::from("y") },
+                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), array_kind: ArrayKind::None, name: String::from("x") },
+                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), array_kind: ArrayKind::None, name: String::from("y") },
             ];
 
             let result = OmlObject::scan_file(content.to_string());
@@ -606,8 +769,8 @@ mod test {
             "#;
 
             let vars = vec![
-                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), name: String::from("x") },
-                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), name: String::from("y") },
+                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), array_kind: ArrayKind::None, name: String::from("x") },
+                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), array_kind: ArrayKind::None, name: String::from("y") },
             ];
 
             let result = OmlObject::scan_file(content.to_string());

@@ -1,5 +1,5 @@
 use crate::core::oml_object::{
-    OmlObject, ObjectType, Variable, VariableModifier
+    OmlObject, ObjectType, Variable, VariableModifier, ArrayKind
 };
 use crate::core::generate::Generate;
 use std::error::Error;
@@ -144,7 +144,7 @@ fn generate_data_class(oml_object: &OmlObject, py_file: &mut String) -> Result<(
 
     // Static (ClassVar) fields first
     for var in &static_vars {
-        let py_type = convert_type(&var.var_type);
+        let py_type = type_annotation(&var.var_type, &var.array_kind);
         writeln!(py_file, "\t{}: ClassVar[{}]", var.name, py_type)?;
     }
 
@@ -158,12 +158,12 @@ fn generate_data_class(oml_object: &OmlObject, py_file: &mut String) -> Result<(
         .collect();
 
     for var in &required {
-        let py_type = convert_type(&var.var_type);
+        let py_type = type_annotation(&var.var_type, &var.array_kind);
         writeln!(py_file, "\t{}: {}", var.name, py_type)?;
     }
 
     for var in &optional {
-        let py_type = convert_type(&var.var_type);
+        let py_type = type_annotation(&var.var_type, &var.array_kind);
         writeln!(py_file, "\t{}: Optional[{}] = None", var.name, py_type)?;
     }
 
@@ -192,7 +192,7 @@ fn generate_regular_class(oml_object: &OmlObject, py_file: &mut String) -> Resul
 
     // Class-level static variables
     for var in &static_vars {
-        let py_type = convert_type(&var.var_type);
+        let py_type = type_annotation(&var.var_type, &var.array_kind);
         if var.var_mod.contains(&VariableModifier::CONST) {
             writeln!(py_file, "\t{}: {} = ...", var.name, py_type)?;
         } else {
@@ -226,11 +226,11 @@ fn generate_regular_class(oml_object: &OmlObject, py_file: &mut String) -> Resul
     if !instance_vars.is_empty() {
         write!(py_file, "\tdef __init__(self")?;
         for var in &required {
-            let py_type = convert_type(&var.var_type);
+            let py_type = type_annotation(&var.var_type, &var.array_kind);
             write!(py_file, ", {}: {}", var.name, py_type)?;
         }
         for var in &optional {
-            let py_type = convert_type(&var.var_type);
+            let py_type = type_annotation(&var.var_type, &var.array_kind);
             write!(py_file, ", {}: Optional[{}] = None", var.name, py_type)?;
         }
         writeln!(py_file, "):")?;
@@ -243,7 +243,7 @@ fn generate_regular_class(oml_object: &OmlObject, py_file: &mut String) -> Resul
 
     // Properties (getters + setters)
     for var in &instance_vars {
-        let py_type = convert_type(&var.var_type);
+        let py_type = type_annotation(&var.var_type, &var.array_kind);
         let is_const = var.var_mod.contains(&VariableModifier::CONST);
         let is_optional = var.var_mod.contains(&VariableModifier::OPTIONAL);
 
@@ -283,11 +283,19 @@ fn convert_type(var_type: &str) -> String {
     }.to_string()
 }
 
+fn type_annotation(var_type: &str, array_kind: &ArrayKind) -> String {
+    let base = convert_type(var_type);
+    match array_kind {
+        ArrayKind::None => base,
+        ArrayKind::Static(_) | ArrayKind::Dynamic => format!("list[{}]", base),
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::oml_object::{ObjectType, Variable, VariableVisibility, VariableModifier};
+    use crate::core::oml_object::{ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind};
 
     fn to_python(oml_object: &OmlObject, use_data_class: bool) -> String {
         PythonGenerator::new(use_data_class)
@@ -302,6 +310,7 @@ mod tests {
             var_mod: mods,
             visibility: VariableVisibility::PRIVATE,
             var_type: ty.to_string(),
+            array_kind: ArrayKind::None,
             name: name.to_string(),
         }
     }
@@ -546,5 +555,77 @@ mod tests {
         };
         let result = PythonGenerator::new(false).generate(std::slice::from_ref(&obj), "test");
         assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod array_tests {
+    use super::*;
+    use crate::core::oml_object::{OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind};
+
+    fn to_python(oml_object: &OmlObject, use_data_class: bool) -> String {
+        PythonGenerator::new(use_data_class)
+            .generate(std::slice::from_ref(oml_object), "test")
+            .unwrap()
+    }
+
+    fn array_var(name: &str, ty: &str, kind: ArrayKind) -> Variable {
+        Variable {
+            var_mod: vec![],
+            visibility: VariableVisibility::PRIVATE,
+            var_type: ty.to_string(),
+            array_kind: kind,
+            name: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_static_array_dataclass() {
+        let obj = OmlObject {
+            oml_type: ObjectType::CLASS,
+            name: "Arr".to_string(),
+            variables: vec![array_var("scores", "uint16", ArrayKind::Static(4))],
+        };
+        let out = to_python(&obj, true);
+        assert!(out.contains("scores: list[int]"), "Got: {}", out);
+    }
+
+    #[test]
+    fn test_dynamic_list_dataclass() {
+        let obj = OmlObject {
+            oml_type: ObjectType::CLASS,
+            name: "Lst".to_string(),
+            variables: vec![array_var("tags", "string", ArrayKind::Dynamic)],
+        };
+        let out = to_python(&obj, true);
+        assert!(out.contains("tags: list[str]"), "Got: {}", out);
+    }
+
+    #[test]
+    fn test_static_array_regular_class() {
+        let obj = OmlObject {
+            oml_type: ObjectType::CLASS,
+            name: "Arr".to_string(),
+            variables: vec![array_var("ids", "int32", ArrayKind::Static(10))],
+        };
+        let out = to_python(&obj, false);
+        assert!(out.contains("ids: list[int]"), "Got: {}", out);
+    }
+
+    #[test]
+    fn test_optional_dynamic_list() {
+        let obj = OmlObject {
+            oml_type: ObjectType::CLASS,
+            name: "Opt".to_string(),
+            variables: vec![Variable {
+                var_mod: vec![VariableModifier::OPTIONAL],
+                visibility: VariableVisibility::PRIVATE,
+                var_type: "string".to_string(),
+                array_kind: ArrayKind::Dynamic,
+                name: "tags".to_string(),
+            }],
+        };
+        let out = to_python(&obj, true);
+        assert!(out.contains("tags: Optional[list[str]] = None"), "Got: {}", out);
     }
 }

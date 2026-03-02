@@ -1,5 +1,5 @@
 use crate::core::oml_object::{
-    OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier
+    OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
 use crate::core::generate::Generate;
 use std::error::Error;
@@ -25,7 +25,15 @@ impl Generate for CppGenerator {
             writeln!(cpp_file, "#include <cstdint>")?;
             writeln!(cpp_file, "#include <string>")?;
             writeln!(cpp_file, "#include <optional>")?;
-            writeln!(cpp_file, "#include <utility>\n")?;
+            writeln!(cpp_file, "#include <utility>")?;
+
+            let has_static_array = oml_objects.iter().any(|o|
+                o.variables.iter().any(|v| matches!(v.array_kind, ArrayKind::Static(_))));
+            let has_dynamic_array = oml_objects.iter().any(|o|
+                o.variables.iter().any(|v| v.array_kind == ArrayKind::Dynamic));
+            if has_static_array  { writeln!(cpp_file, "#include <array>")?; }
+            if has_dynamic_array { writeln!(cpp_file, "#include <vector>")?; }
+            writeln!(cpp_file)?;
         }
 
         for (i, oml_object) in oml_objects.iter().enumerate() {
@@ -153,6 +161,15 @@ fn convert_type(var_type: &str) -> String {
     }
 }
 
+fn type_annotation(var_type: &str, array_kind: &ArrayKind) -> String {
+    let base = convert_type(var_type);
+    match array_kind {
+        ArrayKind::None => base,
+        ArrayKind::Static(n) => format!("std::array<{}, {}>", base, n),
+        ArrayKind::Dynamic => format!("std::vector<{}>", base),
+    }
+}
+
 fn convert_modifiers_and_type(
     var: &Variable,
     cpp_file: &mut String
@@ -168,12 +185,8 @@ fn convert_modifiers_and_type(
         write!(cpp_file, "const ")?;
     }
 
-    let var_type = convert_type(var.var_type.as_str());
-    if var.var_mod.contains(&VariableModifier::OPTIONAL) {
-        write!(cpp_file, "std::optional<{}>", var_type)?;
-    } else {
-        write!(cpp_file, "{}", var_type)?;
-    }
+    let var_type = get_full_type(var);
+    write!(cpp_file, "{}", var_type)?;
 
     writeln!(cpp_file, " {};", var.name)?;
 
@@ -232,7 +245,7 @@ fn generate_getters_and_setters(
 }
 
 fn get_full_type(var: &Variable) -> String {
-    let base_type = convert_type(var.var_type.as_str());
+    let base_type = type_annotation(&var.var_type, &var.array_kind);
     if var.var_mod.contains(&VariableModifier::OPTIONAL) {
         format!("std::optional<{}>", base_type)
     } else {
@@ -368,7 +381,7 @@ mod tests {
     use super::*;
     use crate::core::generate::Generate;
     use crate::core::oml_object::{
-        OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier
+        OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
     };
 
     fn oml_to_cpp(oml_object: &OmlObject, file_name: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -387,18 +400,21 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "Red".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "Green".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "Blue".to_string(),
                 },
             ],
@@ -425,6 +441,7 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "Active".to_string(),
                 },
             ],
@@ -466,18 +483,21 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "public_var".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "private_var".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PROTECTED,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "protected_var".to_string(),
                 },
             ],
@@ -505,12 +525,14 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "float".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "x".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "float".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "y".to_string(),
                 },
             ],
@@ -549,6 +571,7 @@ mod tests {
             var_mod: vec![VariableModifier::STATIC],
             visibility: VariableVisibility::PUBLIC,
             var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
             name: "count".to_string(),
         };
 
@@ -565,6 +588,7 @@ mod tests {
             var_mod: vec![VariableModifier::CONST],
             visibility: VariableVisibility::PUBLIC,
             var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
             name: "MAX_SIZE".to_string(),
         };
 
@@ -581,6 +605,7 @@ mod tests {
             var_mod: vec![VariableModifier::CONST, VariableModifier::STATIC],
             visibility: VariableVisibility::PUBLIC,
             var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
             name: "MAX_VALUE".to_string(),
         };
 
@@ -603,6 +628,7 @@ mod tests {
             var_mod: vec![VariableModifier::CONST, VariableModifier::MUT],
             visibility: VariableVisibility::PUBLIC,
             var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
             name: "value".to_string(),
         };
 
@@ -620,6 +646,7 @@ mod tests {
             var_mod: vec![VariableModifier::OPTIONAL],
             visibility: VariableVisibility::PUBLIC,
             var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
             name: "nickname".to_string(),
         };
 
@@ -635,6 +662,7 @@ mod tests {
             var_mod: vec![VariableModifier::OPTIONAL, VariableModifier::STATIC],
             visibility: VariableVisibility::PUBLIC,
             var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
             name: "cache".to_string(),
         };
 
@@ -651,6 +679,7 @@ mod tests {
             var_mod: vec![VariableModifier::OPTIONAL, VariableModifier::CONST],
             visibility: VariableVisibility::PUBLIC,
             var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
             name: "config".to_string(),
         };
 
@@ -706,12 +735,14 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "Red".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "Blue".to_string(),
                 },
             ],
@@ -744,12 +775,14 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "name".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "age".to_string(),
                 },
             ],
@@ -805,18 +838,21 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "pub1".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "priv1".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "pub2".to_string(),
                 },
             ],
@@ -846,12 +882,14 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "var1".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "var2".to_string(),
                 },
             ],
@@ -876,6 +914,7 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "var1".to_string(),
                 },
             ],
@@ -900,18 +939,21 @@ mod tests {
                     var_mod: vec![VariableModifier::STATIC, VariableModifier::CONST],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "MAX_SIZE".to_string(),
                 },
                 Variable {
                     var_mod: vec![VariableModifier::OPTIONAL],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "nickname".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PROTECTED,
                     var_type: "float".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "value".to_string(),
                 },
             ],
@@ -936,18 +978,21 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "var1".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "var2".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "var3".to_string(),
                 },
             ],
@@ -997,6 +1042,7 @@ mod tests {
             ],
             visibility: VariableVisibility::PUBLIC,
             var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
             name: "value".to_string(),
         };
 
@@ -1018,6 +1064,7 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "".to_string(),
                 },
             ],
@@ -1055,6 +1102,7 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: long_name.to_string(),
                 },
             ],
@@ -1078,6 +1126,7 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "Value".to_string(),
                 },
             ],
@@ -1173,6 +1222,7 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "value".to_string(),
                 },
             ],
@@ -1196,6 +1246,7 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PROTECTED,
                     var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "prot_var".to_string(),
                 },
             ],
@@ -1225,6 +1276,7 @@ mod tests {
                     VariableVisibility::PROTECTED
                 },
                 var_type: "int32".to_string(),
+                    array_kind: ArrayKind::None,
                 name: format!("var{}", i),
             });
         }
@@ -1251,6 +1303,7 @@ mod tests {
                 var_mod: vec![],
                 visibility: VariableVisibility::PUBLIC,
                 var_type: "".to_string(),
+                    array_kind: ArrayKind::None,
                 name: format!("Variant{}", i),
             });
         }
@@ -1281,6 +1334,7 @@ mod tests {
                 var_mod: vec![],
                 visibility: VariableVisibility::PUBLIC,
                 var_type: type_name.to_string(),
+                    array_kind: ArrayKind::None,
                 name: format!("var{}", i),
             });
         }
@@ -1313,6 +1367,7 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "string".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "text".to_string(),
                 },
             ],
@@ -1334,12 +1389,14 @@ mod tests {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "bool".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "flag".to_string(),
                 },
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "char".to_string(),
+                    array_kind: ArrayKind::None,
                     name: "letter".to_string(),
                 },
             ],
@@ -1349,5 +1406,61 @@ mod tests {
 
         assert!(result.contains("bool"));
         assert!(result.contains("char"));
+    }
+}
+
+#[cfg(test)]
+mod array_tests {
+    use super::*;
+    use crate::core::oml_object::{OmlObject, ObjectType, Variable, VariableVisibility, ArrayKind};
+
+    fn to_cpp(oml_object: &OmlObject) -> String {
+        CppGenerator.generate(std::slice::from_ref(oml_object), "test").unwrap()
+    }
+
+    fn array_var(name: &str, ty: &str, kind: ArrayKind) -> Variable {
+        Variable {
+            var_mod: vec![],
+            visibility: VariableVisibility::PUBLIC,
+            var_type: ty.to_string(),
+            array_kind: kind,
+            name: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_static_array_generates_std_array() {
+        let obj = OmlObject {
+            oml_type: ObjectType::CLASS,
+            name: "Arr".to_string(),
+            variables: vec![array_var("scores", "uint16", ArrayKind::Static(4))],
+        };
+        let out = to_cpp(&obj);
+        assert!(out.contains("std::array<uint16_t, 4>"), "Got: {}", out);
+        assert!(out.contains("#include <array>"), "Got: {}", out);
+    }
+
+    #[test]
+    fn test_dynamic_list_generates_std_vector() {
+        let obj = OmlObject {
+            oml_type: ObjectType::CLASS,
+            name: "Lst".to_string(),
+            variables: vec![array_var("tags", "string", ArrayKind::Dynamic)],
+        };
+        let out = to_cpp(&obj);
+        assert!(out.contains("std::vector<std::string>"), "Got: {}", out);
+        assert!(out.contains("#include <vector>"), "Got: {}", out);
+    }
+
+    #[test]
+    fn test_no_array_no_extra_includes() {
+        let obj = OmlObject {
+            oml_type: ObjectType::CLASS,
+            name: "Plain".to_string(),
+            variables: vec![array_var("x", "int32", ArrayKind::None)],
+        };
+        let out = to_cpp(&obj);
+        assert!(!out.contains("#include <array>"), "Got: {}", out);
+        assert!(!out.contains("#include <vector>"), "Got: {}", out);
     }
 }
