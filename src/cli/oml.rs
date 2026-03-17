@@ -6,8 +6,12 @@ use crate::core::oml_object::OmlFile;
 
 use crate::generators::{
     cpp::oml_cpp::CppGenerator,
+    java::oml_java::JavaGenerator,
     kotlin::oml_kotlin::KotlinGenerator,
-    python::oml_python::PythonGenerator
+    python::oml_python::PythonGenerator,
+    rust::oml_rust::RustGenerator,
+    sql::oml_sql::SqlGenerator,
+    typescript::oml_typescript::TypescriptGenerator,
 };
 
 #[derive(Parser)]
@@ -50,6 +54,9 @@ pub struct OmlCli {
 
     #[arg(long)]
     typescript: bool,
+
+    #[arg(long)]
+    sql: bool,
 }
 
 impl OmlCli {
@@ -95,10 +102,18 @@ impl OmlCli {
         }
 
 
-        // TODO: add other generators as they are implemented
-        // if self.java { generators.push(Box::new(JavaGenerator)); }
-        // if self.rust { generators.push(Box::new(RustGenerator)); }
-        // if self.typescript { generators.push(Box::new(TypescriptGenerator)); }
+        if self.java {
+            generators.push(Box::new(JavaGenerator));
+        }
+        if self.rust {
+            generators.push(Box::new(RustGenerator));
+        }
+        if self.typescript {
+            generators.push(Box::new(TypescriptGenerator));
+        }
+        if self.sql {
+            generators.push(Box::new(SqlGenerator));
+        }
 
         generators
     }

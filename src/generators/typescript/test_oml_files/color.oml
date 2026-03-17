@@ -1,0 +1,6 @@
+enum Color {
+    string Red;
+    string Green;
+    string Blue;
+    string Yellow;
+}

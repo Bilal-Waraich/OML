@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::core::generate::Generate;
 use crate::core::oml_object::{
-    OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier
+    OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
 use crate::generators::cpp::oml_cpp::CppGenerator;
 
@@ -138,10 +138,10 @@ fn test_color_enum_generates_cpp_file() {
         oml_type: ObjectType::ENUM,
         name: "Color".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), name: "Red".to_string() },
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), name: "Green".to_string() },
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), name: "Blue".to_string() },
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), name: "Yellow".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Red".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Green".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Blue".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Yellow".to_string() },
         ],
     };
 
