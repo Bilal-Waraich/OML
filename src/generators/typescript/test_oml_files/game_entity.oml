@@ -1,0 +1,7 @@
+class GameEntity {
+    public string name;
+    public float[3] position;
+    public list string tags;
+    public int32 health;
+    public bool active;
+}

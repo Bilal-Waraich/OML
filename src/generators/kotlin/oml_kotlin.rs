@@ -779,10 +779,10 @@ mod tests {
             oml_type: ObjectType::ENUM,
             name: "Direction".to_string(),
             variables: vec![
-                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), name: "North".to_string() },
-                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), name: "South".to_string() },
-                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), name: "East".to_string() },
-                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), name: "West".to_string() },
+                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "North".to_string() },
+                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "South".to_string() },
+                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "East".to_string() },
+                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "West".to_string() },
             ],
         };
 
