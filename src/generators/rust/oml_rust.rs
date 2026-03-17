@@ -1,11 +1,231 @@
 use crate::core::oml_object::{
     OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
-use crate::core::generate::Generate;
+use crate::core::generate::{Generate, BackwardsGenerate};
 use std::error::Error;
 use std::fmt::Write;
 
 pub struct RustGenerator;
+
+impl BackwardsGenerate for RustGenerator {
+    fn reverse(&self, content: &str) -> Result<Vec<OmlObject>, Box<dyn Error>> {
+        let mut objects = Vec::new();
+        let lines: Vec<&str> = content.lines().collect();
+        let mut i = 0;
+
+        while i < lines.len() {
+            let trimmed = lines[i].trim();
+
+            if trimmed.starts_with("pub enum ") && trimmed.ends_with('{') {
+                let name = trimmed
+                    .strip_prefix("pub enum ")
+                    .unwrap()
+                    .trim_end_matches(|c: char| c == '{' || c == ' ')
+                    .to_string();
+                let mut vars = Vec::new();
+                i += 1;
+                while i < lines.len() {
+                    let line = lines[i].trim();
+                    if line == "}" { break; }
+                    let variant = line.trim_end_matches(',').trim().to_string();
+                    if !variant.is_empty() {
+                        vars.push(Variable {
+                            var_mod: vec![],
+                            visibility: VariableVisibility::PUBLIC,
+                            var_type: "string".to_string(),
+                            array_kind: ArrayKind::None,
+                            name: variant,
+                        });
+                    }
+                    i += 1;
+                }
+                objects.push(OmlObject {
+                    oml_type: ObjectType::ENUM,
+                    name,
+                    variables: vars,
+                });
+            } else if trimmed.starts_with("pub struct ") && trimmed.ends_with('{') {
+                let name = trimmed
+                    .strip_prefix("pub struct ")
+                    .unwrap()
+                    .trim_end_matches(|c: char| c == '{' || c == ' ')
+                    .to_string();
+                let mut vars = Vec::new();
+                i += 1;
+                while i < lines.len() {
+                    let line = lines[i].trim();
+                    if line == "}" { break; }
+                    if let Some(var) = parse_rust_field(line) {
+                        vars.push(var);
+                    }
+                    i += 1;
+                }
+                // Check for impl block with associated constants
+                let impl_prefix = format!("impl {} {{", name);
+                let mut j = i + 1;
+                while j < lines.len() {
+                    let line = lines[j].trim();
+                    if line.starts_with(&impl_prefix) {
+                        j += 1;
+                        while j < lines.len() {
+                            let impl_line = lines[j].trim();
+                            if impl_line == "}" { break; }
+                            if let Some(var) = parse_rust_associated_const(impl_line) {
+                                vars.push(var);
+                            }
+                            j += 1;
+                        }
+                        break;
+                    }
+                    j += 1;
+                }
+                objects.push(OmlObject {
+                    oml_type: ObjectType::STRUCT,
+                    name,
+                    variables: vars,
+                });
+            }
+            i += 1;
+        }
+
+        Ok(objects)
+    }
+}
+
+fn reverse_rust_type(rs_type: &str) -> String {
+    match rs_type {
+        "i8" => "int8".to_string(),
+        "i16" => "int16".to_string(),
+        "i32" => "int32".to_string(),
+        "i64" => "int64".to_string(),
+        "u8" => "uint8".to_string(),
+        "u16" => "uint16".to_string(),
+        "u32" => "uint32".to_string(),
+        "u64" => "uint64".to_string(),
+        "f32" => "float".to_string(),
+        "f64" => "double".to_string(),
+        "bool" => "bool".to_string(),
+        "String" => "string".to_string(),
+        "char" => "char".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn parse_rust_field(line: &str) -> Option<Variable> {
+    let line = line.trim().trim_end_matches(',');
+    if line.is_empty() { return None; }
+
+    let mut visibility = VariableVisibility::PRIVATE;
+    let mut rest = line;
+
+    if rest.starts_with("pub(crate) ") {
+        visibility = VariableVisibility::PROTECTED;
+        rest = &rest[11..];
+    } else if rest.starts_with("pub ") {
+        visibility = VariableVisibility::PUBLIC;
+        rest = &rest[4..];
+    }
+
+    // format: "name: Type"
+    let colon_pos = rest.find(':')?;
+    let name = rest[..colon_pos].trim().to_string();
+    let type_str = rest[colon_pos + 1..].trim();
+
+    let (var_type, array_kind, is_optional) = parse_rust_type_annotation(type_str);
+
+    let mut var_mod = Vec::new();
+    if is_optional {
+        var_mod.push(VariableModifier::OPTIONAL);
+    }
+
+    Some(Variable {
+        var_mod,
+        visibility,
+        var_type,
+        array_kind,
+        name,
+    })
+}
+
+fn parse_rust_type_annotation(type_str: &str) -> (String, ArrayKind, bool) {
+    let type_str = type_str.trim();
+
+    // Option<...>
+    if type_str.starts_with("Option<") && type_str.ends_with('>') {
+        let inner = &type_str[7..type_str.len() - 1];
+        let (var_type, array_kind, _) = parse_rust_type_annotation(inner);
+        return (var_type, array_kind, true);
+    }
+
+    // Vec<T>
+    if type_str.starts_with("Vec<") && type_str.ends_with('>') {
+        let inner = &type_str[4..type_str.len() - 1];
+        return (reverse_rust_type(inner), ArrayKind::Dynamic, false);
+    }
+
+    // [T; N]
+    if type_str.starts_with('[') && type_str.ends_with(']') {
+        let inner = &type_str[1..type_str.len() - 1];
+        if let Some(semi_pos) = inner.find(';') {
+            let elem_type = inner[..semi_pos].trim();
+            let size_str = inner[semi_pos + 1..].trim();
+            if let Ok(size) = size_str.parse::<u32>() {
+                return (reverse_rust_type(elem_type), ArrayKind::Static(size), false);
+            }
+        }
+    }
+
+    (reverse_rust_type(type_str), ArrayKind::None, false)
+}
+
+fn parse_rust_associated_const(line: &str) -> Option<Variable> {
+    let line = line.trim();
+    if line.starts_with("//") { return None; }
+
+    let mut visibility = VariableVisibility::PRIVATE;
+    let mut rest = line;
+    let mut var_mod = Vec::new();
+
+    if rest.starts_with("pub(crate) ") {
+        visibility = VariableVisibility::PROTECTED;
+        rest = &rest[11..];
+    } else if rest.starts_with("pub ") {
+        visibility = VariableVisibility::PUBLIC;
+        rest = &rest[4..];
+    }
+
+    if rest.starts_with("const ") {
+        var_mod.push(VariableModifier::STATIC);
+        var_mod.push(VariableModifier::CONST);
+        rest = &rest[6..];
+    } else if rest.starts_with("static mut ") {
+        var_mod.push(VariableModifier::STATIC);
+        var_mod.push(VariableModifier::MUT);
+        rest = &rest[11..];
+    } else {
+        return None;
+    }
+
+    // "NAME: Type = todo!();"
+    let colon_pos = rest.find(':')?;
+    let name = rest[..colon_pos].trim().to_lowercase();
+    let after_colon = rest[colon_pos + 1..].trim();
+    let eq_pos = after_colon.find('=')?;
+    let type_str = after_colon[..eq_pos].trim();
+
+    let (var_type, array_kind, is_optional) = parse_rust_type_annotation(type_str);
+    if is_optional {
+        var_mod.push(VariableModifier::OPTIONAL);
+    }
+
+    Some(Variable {
+        var_mod,
+        visibility,
+        var_type,
+        array_kind,
+        name,
+    })
+}
 
 impl Generate for RustGenerator {
     fn generate(&self, oml_objects: &[OmlObject], file_name: &str) -> Result<String, Box<dyn Error>> {

@@ -13,3 +13,11 @@ pub trait Generate {
     /// Gives the file extension so that it can be saved correctly.
     fn extension(&self) -> &str;
 }
+
+/// Trait for converting generated code back into OML objects.
+/// Implementors parse language-specific source code and reconstruct the
+/// original OML representation.
+pub trait BackwardsGenerate {
+    /// Parse the given source content back into a list of OML objects.
+    fn reverse(&self, content: &str) -> Result<Vec<OmlObject>, Box<dyn Error>>;
+}

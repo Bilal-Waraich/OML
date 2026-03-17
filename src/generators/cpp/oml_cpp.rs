@@ -1,11 +1,232 @@
 use crate::core::oml_object::{
     OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
-use crate::core::generate::Generate;
+use crate::core::generate::{Generate, BackwardsGenerate};
 use std::error::Error;
 use std::fmt::Write;
 
 pub struct CppGenerator;
+
+impl BackwardsGenerate for CppGenerator {
+    fn reverse(&self, content: &str) -> Result<Vec<OmlObject>, Box<dyn Error>> {
+        let mut objects = Vec::new();
+        let lines: Vec<&str> = content.lines().collect();
+        let mut i = 0;
+
+        while i < lines.len() {
+            let trimmed = lines[i].trim();
+
+            if trimmed.starts_with("enum class ") && trimmed.ends_with('{') {
+                let name = trimmed
+                    .strip_prefix("enum class ")
+                    .unwrap()
+                    .trim_end_matches(|c: char| c == '{' || c == ' ')
+                    .to_string();
+                let mut vars = Vec::new();
+                i += 1;
+                while i < lines.len() {
+                    let line = lines[i].trim();
+                    if line.starts_with("};") { break; }
+                    let variant = line.trim_end_matches(',').trim().to_string();
+                    if !variant.is_empty() {
+                        vars.push(Variable {
+                            var_mod: vec![],
+                            visibility: VariableVisibility::PUBLIC,
+                            var_type: "string".to_string(),
+                            array_kind: ArrayKind::None,
+                            name: variant,
+                        });
+                    }
+                    i += 1;
+                }
+                objects.push(OmlObject {
+                    oml_type: ObjectType::ENUM,
+                    name,
+                    variables: vars,
+                });
+            } else if (trimmed.starts_with("class ") || trimmed.starts_with("struct "))
+                && trimmed.ends_with('{')
+            {
+                let is_struct = trimmed.starts_with("struct ");
+                let prefix = if is_struct { "struct " } else { "class " };
+                let name = trimmed
+                    .strip_prefix(prefix)
+                    .unwrap()
+                    .trim_end_matches(|c: char| c == '{' || c == ' ')
+                    .to_string();
+                let mut vars = Vec::new();
+                let mut current_visibility = if is_struct {
+                    VariableVisibility::PUBLIC
+                } else {
+                    VariableVisibility::PRIVATE
+                };
+                i += 1;
+                while i < lines.len() {
+                    let line = lines[i].trim();
+                    if line.starts_with("};") { break; }
+                    if line == "public:" {
+                        current_visibility = VariableVisibility::PUBLIC;
+                    } else if line == "private:" {
+                        current_visibility = VariableVisibility::PRIVATE;
+                    } else if line == "protected:" {
+                        current_visibility = VariableVisibility::PROTECTED;
+                    } else if !line.is_empty()
+                        && !line.starts_with("//")
+                        && !line.contains('(')
+                        && !line.contains('~')
+                        && line.ends_with(';')
+                    {
+                        if let Some(var) = parse_cpp_field(line, &current_visibility) {
+                            vars.push(var);
+                        }
+                    }
+                    i += 1;
+                }
+                let oml_type = if is_struct { ObjectType::STRUCT } else { ObjectType::CLASS };
+                objects.push(OmlObject {
+                    oml_type,
+                    name,
+                    variables: vars,
+                });
+            }
+            i += 1;
+        }
+
+        Ok(objects)
+    }
+}
+
+fn reverse_cpp_type(cpp_type: &str) -> String {
+    match cpp_type {
+        "int8_t" => "int8".to_string(),
+        "int16_t" => "int16".to_string(),
+        "int32_t" => "int32".to_string(),
+        "int64_t" => "int64".to_string(),
+        "uint8_t" => "uint8".to_string(),
+        "uint16_t" => "uint16".to_string(),
+        "uint32_t" => "uint32".to_string(),
+        "uint64_t" => "uint64".to_string(),
+        "float" => "float".to_string(),
+        "double" => "double".to_string(),
+        "bool" => "bool".to_string(),
+        "std::string" => "string".to_string(),
+        "char" => "char".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn parse_cpp_field(line: &str, default_vis: &VariableVisibility) -> Option<Variable> {
+    let line = line.trim().trim_end_matches(';').trim();
+    if line.is_empty() { return None; }
+
+    let mut var_mod = Vec::new();
+    let mut rest = line;
+
+    if rest.starts_with("static ") {
+        var_mod.push(VariableModifier::STATIC);
+        rest = &rest[7..];
+    }
+
+    if rest.starts_with("const ") {
+        var_mod.push(VariableModifier::CONST);
+        rest = &rest[6..];
+    }
+
+    // Handle std::optional<...>
+    if rest.starts_with("std::optional<") {
+        var_mod.push(VariableModifier::OPTIONAL);
+        let close = rest.rfind('>')?;
+        let inner = &rest[14..close];
+        rest = inner;
+        // Need to also get the name from after the >
+        let after_close = line.trim().trim_end_matches(';');
+        let close_pos = after_close.rfind('>')?;
+        let name = after_close[close_pos + 1..].trim().to_string();
+
+        let (var_type, array_kind) = parse_cpp_type_and_name_inner(rest);
+        return Some(Variable {
+            var_mod,
+            visibility: default_vis.clone(),
+            var_type,
+            array_kind,
+            name,
+        });
+    }
+
+    // Handle std::vector<T>
+    if rest.starts_with("std::vector<") {
+        let close = rest.rfind('>')?;
+        let inner = &rest[12..close];
+        let name = rest[close + 1..].trim().to_string();
+        return Some(Variable {
+            var_mod,
+            visibility: default_vis.clone(),
+            var_type: reverse_cpp_type(inner.trim()),
+            array_kind: ArrayKind::Dynamic,
+            name,
+        });
+    }
+
+    // Handle std::array<T, N>
+    if rest.starts_with("std::array<") {
+        let close = rest.rfind('>')?;
+        let inner = &rest[11..close];
+        let name = rest[close + 1..].trim().to_string();
+        if let Some(comma) = inner.find(',') {
+            let elem_type = inner[..comma].trim();
+            let size_str = inner[comma + 1..].trim();
+            if let Ok(size) = size_str.parse::<u32>() {
+                return Some(Variable {
+                    var_mod,
+                    visibility: default_vis.clone(),
+                    var_type: reverse_cpp_type(elem_type),
+                    array_kind: ArrayKind::Static(size),
+                    name,
+                });
+            }
+        }
+    }
+
+    // Simple "type name"
+    let tokens: Vec<&str> = rest.split_whitespace().collect();
+    if tokens.len() >= 2 {
+        let cpp_type = tokens[..tokens.len() - 1].join(" ");
+        let name = tokens[tokens.len() - 1].to_string();
+        return Some(Variable {
+            var_mod,
+            visibility: default_vis.clone(),
+            var_type: reverse_cpp_type(&cpp_type),
+            array_kind: ArrayKind::None,
+            name,
+        });
+    }
+
+    None
+}
+
+fn parse_cpp_type_and_name_inner(type_str: &str) -> (String, ArrayKind) {
+    let type_str = type_str.trim();
+
+    if type_str.starts_with("std::vector<") {
+        let close = type_str.rfind('>').unwrap_or(type_str.len());
+        let inner = &type_str[12..close];
+        return (reverse_cpp_type(inner.trim()), ArrayKind::Dynamic);
+    }
+
+    if type_str.starts_with("std::array<") {
+        let close = type_str.rfind('>').unwrap_or(type_str.len());
+        let inner = &type_str[11..close];
+        if let Some(comma) = inner.find(',') {
+            let elem_type = inner[..comma].trim();
+            let size_str = inner[comma + 1..].trim();
+            if let Ok(size) = size_str.parse::<u32>() {
+                return (reverse_cpp_type(elem_type), ArrayKind::Static(size));
+            }
+        }
+    }
+
+    (reverse_cpp_type(type_str), ArrayKind::None)
+}
 
 impl Generate for CppGenerator {
     fn generate(&self, oml_objects: &[OmlObject], file_name: &str) -> Result<String, Box<dyn Error>> {
