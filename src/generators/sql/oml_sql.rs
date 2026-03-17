@@ -1,11 +1,160 @@
 use crate::core::oml_object::{
-    OmlObject, ObjectType, Variable, VariableModifier, ArrayKind
+    OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
-use crate::core::generate::Generate;
+use crate::core::generate::{Generate, BackwardsGenerate};
 use std::error::Error;
 use std::fmt::Write;
 
 pub struct SqlGenerator;
+
+impl BackwardsGenerate for SqlGenerator {
+    fn reverse(&self, content: &str) -> Result<Vec<OmlObject>, Box<dyn Error>> {
+        let mut objects = Vec::new();
+        let lines: Vec<&str> = content.lines().collect();
+        let mut i = 0;
+
+        while i < lines.len() {
+            let trimmed = lines[i].trim();
+
+            if trimmed.starts_with("CREATE TABLE ") {
+                let name = trimmed
+                    .strip_prefix("CREATE TABLE ")
+                    .unwrap()
+                    .trim_end_matches(|c: char| c == '(' || c == ' ')
+                    .to_string();
+
+                // Check if this is an enum (lookup table) by looking for INSERT with name values
+                let mut vars = Vec::new();
+                let mut is_enum = false;
+                i += 1;
+
+                // Collect column definitions
+                let mut columns = Vec::new();
+                while i < lines.len() {
+                    let line = lines[i].trim();
+                    if line.starts_with(");") { break; }
+                    if !line.starts_with("CONSTRAINT") && !line.is_empty() {
+                        columns.push(line.to_string());
+                    }
+                    i += 1;
+                }
+
+                // Check for INSERT INTO (enum pattern)
+                i += 1;
+                while i < lines.len() {
+                    let line = lines[i].trim();
+                    if line.is_empty() { i += 1; continue; }
+                    if line.starts_with(&format!("INSERT INTO {} (name) VALUES", name)) {
+                        is_enum = true;
+                        // Parse enum values
+                        let values_start = line.find("VALUES").unwrap() + 6;
+                        let values_str = &line[values_start..].trim_end_matches(';');
+                        for val in values_str.split("),(") {
+                            let clean = val.trim().trim_matches(|c: char| c == '(' || c == ')' || c == '\'').trim();
+                            if !clean.is_empty() {
+                                vars.push(Variable {
+                                    var_mod: vec![],
+                                    visibility: VariableVisibility::PUBLIC,
+                                    var_type: "string".to_string(),
+                                    array_kind: ArrayKind::None,
+                                    name: clean.to_string(),
+                                });
+                            }
+                        }
+                    }
+                    break;
+                }
+
+                if is_enum {
+                    objects.push(OmlObject {
+                        oml_type: ObjectType::ENUM,
+                        name,
+                        variables: vars,
+                    });
+                } else {
+                    // Parse as struct from columns
+                    for col in &columns {
+                        if let Some(var) = parse_sql_column(col) {
+                            vars.push(var);
+                        }
+                    }
+                    objects.push(OmlObject {
+                        oml_type: ObjectType::STRUCT,
+                        name,
+                        variables: vars,
+                    });
+                }
+                continue;
+            }
+            i += 1;
+        }
+
+        Ok(objects)
+    }
+}
+
+fn reverse_sql_type(sql_type: &str) -> String {
+    match sql_type {
+        "TINYINT" => "int8".to_string(),
+        "SMALLINT" => "int16".to_string(),
+        "INT" => "int32".to_string(),
+        "BIGINT" => "int64".to_string(),
+        "TINYINT UNSIGNED" => "uint8".to_string(),
+        "SMALLINT UNSIGNED" => "uint16".to_string(),
+        "INT UNSIGNED" => "uint32".to_string(),
+        "BIGINT UNSIGNED" => "uint64".to_string(),
+        "FLOAT" => "float".to_string(),
+        "DOUBLE" => "double".to_string(),
+        "BOOLEAN" => "bool".to_string(),
+        "TEXT" => "string".to_string(),
+        "CHAR(1)" => "char".to_string(),
+        "VARCHAR(255)" => "string".to_string(),
+        _ => "int32".to_string(),
+    }
+}
+
+fn parse_sql_column(line: &str) -> Option<Variable> {
+    let line = line.trim().trim_end_matches(',');
+    if line.is_empty() { return None; }
+    // Skip id column
+    if line.starts_with("id ") { return None; }
+
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    if tokens.len() < 2 { return None; }
+
+    let name = tokens[0].to_string();
+    // Reconstruct the SQL type (might be multi-word like "TINYINT UNSIGNED")
+    let mut type_end = 1;
+    if tokens.len() > 2 && tokens[2] != "NOT" && tokens[2] != "NULL" {
+        // Check for "UNSIGNED"
+        if tokens[type_end] == "UNSIGNED" || (tokens.len() > type_end + 1 && tokens[type_end + 1] == "UNSIGNED") {
+            // multi-word type
+        }
+    }
+
+    let sql_type_str;
+    if tokens.len() > 2 && tokens[2] == "UNSIGNED" {
+        sql_type_str = format!("{} UNSIGNED", tokens[1]);
+        type_end = 3;
+    } else {
+        sql_type_str = tokens[1].to_string();
+        type_end = 2;
+    }
+
+    let is_optional = tokens[type_end..].contains(&"NULL") && !tokens[type_end..].contains(&"NOT");
+    let mut var_mod = Vec::new();
+    if is_optional {
+        var_mod.push(VariableModifier::OPTIONAL);
+    }
+
+    Some(Variable {
+        var_mod,
+        visibility: VariableVisibility::PRIVATE,
+        var_type: reverse_sql_type(&sql_type_str),
+        array_kind: ArrayKind::None,
+        name,
+    })
+}
 
 impl Generate for SqlGenerator {
     fn generate(&self, oml_objects: &[OmlObject], file_name: &str) -> Result<String, Box<dyn Error>> {

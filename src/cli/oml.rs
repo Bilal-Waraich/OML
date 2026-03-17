@@ -1,7 +1,7 @@
-use clap::{Parser, CommandFactory};
+use clap::{Parser, CommandFactory, Subcommand};
 use crate::core::errors;
 use crate::core::dir_parser::parse_dir_from_string;
-use crate::core::generate::Generate;
+use crate::core::generate::{Generate, BackwardsGenerate};
 use crate::core::oml_object::OmlFile;
 
 use crate::generators::{
@@ -18,6 +18,9 @@ use crate::generators::{
 #[command(name = "oml")]
 #[command(about = "Parse OML files and generate code from .oml definitions", long_about = None)]
 pub struct OmlCli {
+
+    #[command(subcommand)]
+    pub command: Option<Commands>,
 
     // names of the directories / oml files
     inputs: Option<Vec<String>>,
@@ -57,6 +60,19 @@ pub struct OmlCli {
 
     #[arg(long)]
     sql: bool,
+}
+
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Revert generated files back to OML format
+    Revert {
+        /// Files to convert back to OML (e.g. file.cpp, file.kt, file.py)
+        files: Vec<String>,
+
+        /// Output directory for the generated .oml files
+        #[arg(short, long, default_value = "./oml_output")]
+        output: String,
+    },
 }
 
 impl OmlCli {
@@ -116,5 +132,19 @@ impl OmlCli {
         }
 
         generators
+    }
+}
+
+/// Returns the appropriate backwards generator for a file based on its extension.
+pub fn get_backwards_generator(extension: &str) -> Option<Box<dyn BackwardsGenerate>> {
+    match extension {
+        "rs" => Some(Box::new(RustGenerator)),
+        "kt" => Some(Box::new(KotlinGenerator::new(false))),
+        "cpp" | "h" => Some(Box::new(CppGenerator)),
+        "py" => Some(Box::new(PythonGenerator::new(false))),
+        "java" => Some(Box::new(JavaGenerator)),
+        "ts" => Some(Box::new(TypescriptGenerator)),
+        "sql" => Some(Box::new(SqlGenerator)),
+        _ => None,
     }
 }

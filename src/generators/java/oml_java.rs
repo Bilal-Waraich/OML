@@ -1,11 +1,189 @@
 use crate::core::oml_object::{
     OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
-use crate::core::generate::Generate;
+use crate::core::generate::{Generate, BackwardsGenerate};
 use std::error::Error;
 use std::fmt::Write;
 
 pub struct JavaGenerator;
+
+impl BackwardsGenerate for JavaGenerator {
+    fn reverse(&self, content: &str) -> Result<Vec<OmlObject>, Box<dyn Error>> {
+        let mut objects = Vec::new();
+        let lines: Vec<&str> = content.lines().collect();
+        let mut i = 0;
+
+        while i < lines.len() {
+            let trimmed = lines[i].trim();
+
+            if trimmed.starts_with("public enum ") && trimmed.ends_with('{') {
+                let name = trimmed
+                    .strip_prefix("public enum ")
+                    .unwrap()
+                    .trim_end_matches(|c: char| c == '{' || c == ' ')
+                    .to_string();
+                let mut vars = Vec::new();
+                i += 1;
+                while i < lines.len() {
+                    let line = lines[i].trim();
+                    if line == "}" { break; }
+                    let variant = line.trim_end_matches(|c: char| c == ',' || c == ';').trim().to_string();
+                    if !variant.is_empty() {
+                        vars.push(Variable {
+                            var_mod: vec![],
+                            visibility: VariableVisibility::PUBLIC,
+                            var_type: "string".to_string(),
+                            array_kind: ArrayKind::None,
+                            name: variant,
+                        });
+                    }
+                    i += 1;
+                }
+                objects.push(OmlObject {
+                    oml_type: ObjectType::ENUM,
+                    name,
+                    variables: vars,
+                });
+            } else if trimmed.starts_with("public class ") && trimmed.ends_with('{') {
+                let name = trimmed
+                    .strip_prefix("public class ")
+                    .unwrap()
+                    .trim_end_matches(|c: char| c == '{' || c == ' ')
+                    .to_string();
+                let mut vars = Vec::new();
+                i += 1;
+                while i < lines.len() {
+                    let line = lines[i].trim();
+                    if line == "}" { break; }
+                    // Only parse field declarations (before constructor)
+                    if line.ends_with(';') && !line.contains('(') && !line.contains("return") {
+                        if let Some(var) = parse_java_field(line) {
+                            vars.push(var);
+                        }
+                    }
+                    // Stop parsing fields when we hit the constructor
+                    if line.contains(&format!("public {}(", name)) { break; }
+                    i += 1;
+                }
+                // Skip to end of class
+                let mut brace_depth = 1;
+                while i < lines.len() && brace_depth > 0 {
+                    let line = lines[i].trim();
+                    brace_depth += line.matches('{').count();
+                    brace_depth -= line.matches('}').count();
+                    i += 1;
+                }
+                objects.push(OmlObject {
+                    oml_type: ObjectType::CLASS,
+                    name,
+                    variables: vars,
+                });
+                continue;
+            }
+            i += 1;
+        }
+
+        Ok(objects)
+    }
+}
+
+fn reverse_java_type(java_type: &str) -> String {
+    match java_type {
+        "byte" => "int8".to_string(),
+        "short" => "int16".to_string(),
+        "int" => "int32".to_string(),
+        "long" => "int64".to_string(),
+        "float" => "float".to_string(),
+        "double" => "double".to_string(),
+        "boolean" => "bool".to_string(),
+        "String" => "string".to_string(),
+        "char" => "char".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn parse_java_field(line: &str) -> Option<Variable> {
+    let line = line.trim().trim_end_matches(';').trim();
+    if line.is_empty() { return None; }
+
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    if tokens.len() < 3 { return None; }
+
+    let mut visibility = VariableVisibility::PRIVATE;
+    let mut var_mod = Vec::new();
+    let mut idx = 0;
+
+    // Parse visibility
+    match tokens.get(idx) {
+        Some(&"private") => { visibility = VariableVisibility::PRIVATE; idx += 1; }
+        Some(&"protected") => { visibility = VariableVisibility::PROTECTED; idx += 1; }
+        Some(&"public") => { visibility = VariableVisibility::PUBLIC; idx += 1; }
+        _ => {}
+    }
+
+    // Parse modifiers
+    while idx < tokens.len() {
+        match tokens[idx] {
+            "static" => { var_mod.push(VariableModifier::STATIC); idx += 1; }
+            "final" => { var_mod.push(VariableModifier::CONST); idx += 1; }
+            _ => break,
+        }
+    }
+
+    if idx + 2 > tokens.len() { return None; }
+
+    let type_token = tokens[idx];
+    let name = tokens[idx + 1].to_string();
+
+    // Handle List<Type>
+    if type_token.starts_with("List<") && type_token.ends_with('>') {
+        let inner = &type_token[5..type_token.len() - 1];
+        let oml_type = reverse_java_boxed_type(inner);
+        return Some(Variable { var_mod, visibility, var_type: oml_type, array_kind: ArrayKind::Dynamic, name });
+    }
+
+    // Handle arrays: type[] /* [N] */
+    if type_token.ends_with("[]") {
+        let base = &type_token[..type_token.len() - 2];
+        // Check for size comment
+        let remaining = tokens[idx + 1..].join(" ");
+        let size = if let Some(start) = remaining.find("/* [") {
+            let end = remaining[start..].find("] */");
+            end.and_then(|e| remaining[start + 4..start + e].parse::<u32>().ok())
+        } else {
+            None
+        };
+        let name_str = tokens[idx + 1].to_string();
+        let array_kind = match size {
+            Some(n) => ArrayKind::Static(n),
+            None => ArrayKind::Dynamic,
+        };
+        return Some(Variable { var_mod, visibility, var_type: reverse_java_type(base), array_kind, name: name_str });
+    }
+
+    Some(Variable {
+        var_mod,
+        visibility,
+        var_type: reverse_java_type(type_token),
+        array_kind: ArrayKind::None,
+        name,
+    })
+}
+
+fn reverse_java_boxed_type(boxed: &str) -> String {
+    match boxed {
+        "Byte" => "int8".to_string(),
+        "Short" => "int16".to_string(),
+        "Integer" => "int32".to_string(),
+        "Long" => "int64".to_string(),
+        "Float" => "float".to_string(),
+        "Double" => "double".to_string(),
+        "Boolean" => "bool".to_string(),
+        "String" => "string".to_string(),
+        "Character" => "char".to_string(),
+        other => other.to_string(),
+    }
+}
 
 impl Generate for JavaGenerator {
     fn generate(&self, oml_objects: &[OmlObject], file_name: &str) -> Result<String, Box<dyn Error>> {

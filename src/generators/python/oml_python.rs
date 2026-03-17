@@ -1,12 +1,261 @@
 use crate::core::oml_object::{
-    OmlObject, ObjectType, Variable, VariableModifier, ArrayKind
+    OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
-use crate::core::generate::Generate;
+use crate::core::generate::{Generate, BackwardsGenerate};
 use std::error::Error;
 use std::fmt::Write;
 
 pub struct PythonGenerator {
     pub use_data_class: bool,
+}
+
+impl BackwardsGenerate for PythonGenerator {
+    fn reverse(&self, content: &str) -> Result<Vec<OmlObject>, Box<dyn Error>> {
+        let mut objects = Vec::new();
+        let lines: Vec<&str> = content.lines().collect();
+        let mut i = 0;
+
+        while i < lines.len() {
+            let trimmed = lines[i].trim();
+
+            // Check for @dataclass decorator
+            let is_dataclass = trimmed == "@dataclass" || trimmed == "@dataclass(frozen=True)";
+            let is_frozen = trimmed == "@dataclass(frozen=True)";
+
+            if is_dataclass {
+                i += 1;
+                if i >= lines.len() { break; }
+                let class_line = lines[i].trim();
+                if let Some(name) = class_line.strip_prefix("class ").and_then(|s| s.strip_suffix(':')) {
+                    let name = name.to_string();
+                    let mut vars = Vec::new();
+                    i += 1;
+                    while i < lines.len() {
+                        let line = lines[i].trim();
+                        if line.is_empty() || (!line.starts_with('\t') && !line.starts_with("    ") && lines[i] == lines[i].trim_start()) {
+                            // Check if this line is actually at the class body level
+                            if !lines[i].starts_with('\t') && !lines[i].starts_with("    ") && !line.is_empty() && line != "pass" {
+                                break;
+                            }
+                        }
+                        if line == "pass" { i += 1; continue; }
+                        if line.contains(": ClassVar[") {
+                            if let Some(var) = parse_python_classvar(line) {
+                                vars.push(var);
+                            }
+                        } else if line.contains(": Optional[") && line.contains("= None") {
+                            if let Some(var) = parse_python_dataclass_field(line, true, is_frozen) {
+                                vars.push(var);
+                            }
+                        } else if line.contains(": ") && !line.starts_with("def ") && !line.starts_with("@") {
+                            if let Some(var) = parse_python_dataclass_field(line, false, is_frozen) {
+                                vars.push(var);
+                            }
+                        }
+                        i += 1;
+                    }
+                    objects.push(OmlObject {
+                        oml_type: ObjectType::CLASS,
+                        name,
+                        variables: vars,
+                    });
+                    continue;
+                }
+            }
+
+            // class Foo(Enum):
+            if trimmed.starts_with("class ") && trimmed.contains("(Enum)") && trimmed.ends_with(':') {
+                let name = trimmed
+                    .strip_prefix("class ")
+                    .unwrap()
+                    .split('(')
+                    .next()
+                    .unwrap()
+                    .trim()
+                    .to_string();
+                let mut vars = Vec::new();
+                i += 1;
+                while i < lines.len() {
+                    let line = lines[i].trim();
+                    if line.is_empty() || (!lines[i].starts_with('\t') && !lines[i].starts_with("    ") && !line.is_empty() && line != "pass") {
+                        break;
+                    }
+                    if line == "pass" { i += 1; continue; }
+                    // "VARIANT = N"
+                    if let Some(eq_pos) = line.find(" = ") {
+                        let variant_name = line[..eq_pos].trim().to_string();
+                        vars.push(Variable {
+                            var_mod: vec![],
+                            visibility: VariableVisibility::PUBLIC,
+                            var_type: "string".to_string(),
+                            array_kind: ArrayKind::None,
+                            name: variant_name,
+                        });
+                    }
+                    i += 1;
+                }
+                objects.push(OmlObject {
+                    oml_type: ObjectType::ENUM,
+                    name,
+                    variables: vars,
+                });
+                continue;
+            }
+
+            // Regular class
+            if trimmed.starts_with("class ") && trimmed.ends_with(':') && !trimmed.contains("(Enum)") {
+                let name = trimmed
+                    .strip_prefix("class ")
+                    .unwrap()
+                    .strip_suffix(':')
+                    .unwrap()
+                    .trim()
+                    .to_string();
+                let mut vars = Vec::new();
+                i += 1;
+                while i < lines.len() {
+                    let line = lines[i].trim();
+                    // Parse __init__ params
+                    if line.starts_with("def __init__(self") {
+                        let params = extract_python_init_params(line);
+                        for (pname, ptype, is_opt) in params {
+                            let (var_type, array_kind) = parse_python_type(&ptype);
+                            let mut var_mod = Vec::new();
+                            if is_opt { var_mod.push(VariableModifier::OPTIONAL); }
+                            vars.push(Variable {
+                                var_mod,
+                                visibility: VariableVisibility::PRIVATE,
+                                var_type,
+                                array_kind,
+                                name: pname,
+                            });
+                        }
+                    }
+                    // Stop at next class or top-level definition
+                    if !lines[i].starts_with('\t') && !lines[i].starts_with("    ") && !line.is_empty() && line != "pass" {
+                        break;
+                    }
+                    i += 1;
+                }
+                objects.push(OmlObject {
+                    oml_type: ObjectType::CLASS,
+                    name,
+                    variables: vars,
+                });
+                continue;
+            }
+
+            i += 1;
+        }
+
+        Ok(objects)
+    }
+}
+
+fn reverse_python_type(py_type: &str) -> String {
+    match py_type {
+        "int" => "int32".to_string(),
+        "float" => "double".to_string(),
+        "bool" => "bool".to_string(),
+        "str" => "string".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn parse_python_type(type_str: &str) -> (String, ArrayKind) {
+    let type_str = type_str.trim();
+    if type_str.starts_with("list[") && type_str.ends_with(']') {
+        let inner = &type_str[5..type_str.len() - 1];
+        return (reverse_python_type(inner), ArrayKind::Dynamic);
+    }
+    if type_str.starts_with("Optional[") && type_str.ends_with(']') {
+        let inner = &type_str[9..type_str.len() - 1];
+        return parse_python_type(inner);
+    }
+    (reverse_python_type(type_str), ArrayKind::None)
+}
+
+fn parse_python_classvar(line: &str) -> Option<Variable> {
+    let line = line.trim();
+    let colon = line.find(':')?;
+    let name = line[..colon].trim().to_string();
+    let type_part = line[colon + 1..].trim();
+    // ClassVar[type]
+    let inner = type_part.strip_prefix("ClassVar[")?.strip_suffix(']')?;
+    let (var_type, array_kind) = parse_python_type(inner);
+    Some(Variable {
+        var_mod: vec![VariableModifier::STATIC],
+        visibility: VariableVisibility::PRIVATE,
+        var_type,
+        array_kind,
+        name,
+    })
+}
+
+fn parse_python_dataclass_field(line: &str, is_optional: bool, is_frozen: bool) -> Option<Variable> {
+    let line = line.trim();
+    let colon = line.find(':')?;
+    let name = line[..colon].trim().to_string();
+    let type_part = line[colon + 1..].trim();
+
+    let mut var_mod = Vec::new();
+    if is_frozen {
+        var_mod.push(VariableModifier::CONST);
+    }
+
+    if is_optional {
+        var_mod.push(VariableModifier::OPTIONAL);
+        // "Optional[type] = None"
+        let type_str = type_part.split('=').next()?.trim();
+        let inner = type_str.strip_prefix("Optional[")?.strip_suffix(']')?;
+        let (var_type, array_kind) = parse_python_type(inner);
+        return Some(Variable {
+            var_mod,
+            visibility: VariableVisibility::PRIVATE,
+            var_type,
+            array_kind,
+            name,
+        });
+    }
+
+    let (var_type, array_kind) = parse_python_type(type_part);
+    Some(Variable {
+        var_mod,
+        visibility: VariableVisibility::PRIVATE,
+        var_type,
+        array_kind,
+        name,
+    })
+}
+
+fn extract_python_init_params(line: &str) -> Vec<(String, String, bool)> {
+    let mut params = Vec::new();
+    // def __init__(self, name: str, age: int, email: Optional[str] = None):
+    let start = match line.find("(self") {
+        Some(pos) => pos + 5,
+        None => return params,
+    };
+    let end = match line.rfind(')') {
+        Some(pos) => pos,
+        None => return params,
+    };
+    let param_str = &line[start..end];
+
+    for param in param_str.split(',') {
+        let param = param.trim();
+        if param.is_empty() { continue; }
+        let colon = match param.find(':') {
+            Some(c) => c,
+            None => continue,
+        };
+        let pname = param[..colon].trim().to_string();
+        let rest = param[colon + 1..].trim();
+        let is_opt = rest.contains("Optional[") || rest.contains("= None");
+        let ptype = rest.split('=').next().unwrap_or(rest).trim().to_string();
+        params.push((pname, ptype, is_opt));
+    }
+
+    params
 }
 impl PythonGenerator {
     pub fn new(use_data_class: bool) -> Self {

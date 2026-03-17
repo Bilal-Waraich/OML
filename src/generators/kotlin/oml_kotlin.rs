@@ -1,12 +1,236 @@
 use crate::core::oml_object::{
     OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
-use crate::core::generate::Generate;
+use crate::core::generate::{Generate, BackwardsGenerate};
 use std::error::Error;
 use std::fmt::Write;
 
 pub struct KotlinGenerator {
     pub use_data_class: bool,
+}
+
+impl BackwardsGenerate for KotlinGenerator {
+    fn reverse(&self, content: &str) -> Result<Vec<OmlObject>, Box<dyn Error>> {
+        let mut objects = Vec::new();
+        let lines: Vec<&str> = content.lines().collect();
+        let mut i = 0;
+
+        while i < lines.len() {
+            let trimmed = lines[i].trim();
+
+            if trimmed.starts_with("enum class ") && trimmed.ends_with('{') {
+                let name = trimmed
+                    .strip_prefix("enum class ")
+                    .unwrap()
+                    .trim_end_matches(|c: char| c == '{' || c == ' ')
+                    .to_string();
+                let mut vars = Vec::new();
+                i += 1;
+                while i < lines.len() {
+                    let line = lines[i].trim();
+                    if line == "}" { break; }
+                    let variant = line.trim_end_matches(',').trim().to_string();
+                    if !variant.is_empty() {
+                        vars.push(Variable {
+                            var_mod: vec![],
+                            visibility: VariableVisibility::PUBLIC,
+                            var_type: "string".to_string(),
+                            array_kind: ArrayKind::None,
+                            name: variant,
+                        });
+                    }
+                    i += 1;
+                }
+                objects.push(OmlObject {
+                    oml_type: ObjectType::ENUM,
+                    name,
+                    variables: vars,
+                });
+            } else if (trimmed.starts_with("data class ") || trimmed.starts_with("class "))
+                && (trimmed.contains('(') || trimmed.ends_with('{'))
+            {
+                let is_data = trimmed.starts_with("data class ");
+                let prefix = if is_data { "data class " } else { "class " };
+                let after = trimmed.strip_prefix(prefix).unwrap();
+                let name_end = after.find(|c: char| c == '(' || c == '{' || c == ' ').unwrap_or(after.len());
+                let name = after[..name_end].trim().to_string();
+
+                let mut vars = Vec::new();
+                let mut in_companion = false;
+
+                // Collect all lines until the class closes
+                if trimmed.contains('(') {
+                    // Constructor params
+                    i += 1;
+                    while i < lines.len() {
+                        let line = lines[i].trim();
+                        if line.starts_with(')') { break; }
+                        if let Some(var) = parse_kotlin_param(line) {
+                            vars.push(var);
+                        }
+                        i += 1;
+                    }
+                }
+
+                // Look for companion object or closing brace
+                i += 1;
+                while i < lines.len() {
+                    let line = lines[i].trim();
+                    if line == "}" && !in_companion { break; }
+                    if line == "}" && in_companion {
+                        in_companion = false;
+                        i += 1;
+                        continue;
+                    }
+                    if line.starts_with("companion object {") {
+                        in_companion = true;
+                        i += 1;
+                        continue;
+                    }
+                    if in_companion {
+                        if let Some(var) = parse_kotlin_companion_var(line) {
+                            vars.push(var);
+                        }
+                    }
+                    i += 1;
+                }
+
+                let oml_type = if is_data { ObjectType::CLASS } else { ObjectType::CLASS };
+                objects.push(OmlObject {
+                    oml_type,
+                    name,
+                    variables: vars,
+                });
+            }
+            i += 1;
+        }
+
+        Ok(objects)
+    }
+}
+
+fn reverse_kotlin_type(kt_type: &str) -> String {
+    match kt_type {
+        "Int" => "int32".to_string(),
+        "Long" => "int64".to_string(),
+        "UInt" => "uint32".to_string(),
+        "ULong" => "uint64".to_string(),
+        "Float" => "float".to_string(),
+        "Double" => "double".to_string(),
+        "Boolean" => "bool".to_string(),
+        "String" => "string".to_string(),
+        "Char" => "char".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn parse_kotlin_type_annotation(type_str: &str) -> (String, ArrayKind, bool) {
+    let type_str = type_str.trim();
+
+    // Optional: "Type? = null" or "Type?"
+    let (type_str, is_optional) = if type_str.ends_with("? = null") {
+        (&type_str[..type_str.len() - 8], true)
+    } else if type_str.ends_with('?') {
+        (&type_str[..type_str.len() - 1], true)
+    } else {
+        (type_str, false)
+    };
+
+    // Array<T>
+    if type_str.starts_with("Array<") && type_str.ends_with('>') {
+        let inner = &type_str[6..type_str.len() - 1];
+        return (reverse_kotlin_type(inner), ArrayKind::Static(0), is_optional);
+    }
+
+    // MutableList<T>
+    if type_str.starts_with("MutableList<") && type_str.ends_with('>') {
+        let inner = &type_str[12..type_str.len() - 1];
+        return (reverse_kotlin_type(inner), ArrayKind::Dynamic, is_optional);
+    }
+
+    (reverse_kotlin_type(type_str), ArrayKind::None, is_optional)
+}
+
+fn parse_kotlin_param(line: &str) -> Option<Variable> {
+    let line = line.trim().trim_end_matches(',');
+    if line.is_empty() { return None; }
+
+    let mut visibility = VariableVisibility::PUBLIC;
+    let mut rest = line;
+
+    if rest.starts_with("private ") {
+        visibility = VariableVisibility::PRIVATE;
+        rest = &rest[8..];
+    } else if rest.starts_with("protected ") {
+        visibility = VariableVisibility::PROTECTED;
+        rest = &rest[10..];
+    }
+
+    let mut var_mod = Vec::new();
+    let is_val;
+    if rest.starts_with("val ") {
+        var_mod.push(VariableModifier::CONST);
+        rest = &rest[4..];
+        is_val = true;
+    } else if rest.starts_with("var ") {
+        rest = &rest[4..];
+        is_val = false;
+    } else {
+        return None;
+    }
+    let _ = is_val;
+
+    // "name: Type" or "name: Type? = null"
+    let colon_pos = rest.find(':')?;
+    let name = rest[..colon_pos].trim().to_string();
+    let type_str = rest[colon_pos + 1..].trim();
+
+    let (var_type, array_kind, is_optional) = parse_kotlin_type_annotation(type_str);
+    if is_optional {
+        var_mod.push(VariableModifier::OPTIONAL);
+    }
+
+    Some(Variable {
+        var_mod,
+        visibility,
+        var_type,
+        array_kind,
+        name,
+    })
+}
+
+fn parse_kotlin_companion_var(line: &str) -> Option<Variable> {
+    let line = line.trim();
+    if line.is_empty() { return None; }
+
+    let mut var_mod = vec![VariableModifier::STATIC];
+    let mut rest = line;
+
+    if rest.starts_with("val ") {
+        var_mod.push(VariableModifier::CONST);
+        rest = &rest[4..];
+    } else if rest.starts_with("var ") {
+        rest = &rest[4..];
+    } else {
+        return None;
+    }
+
+    let colon_pos = rest.find(':')?;
+    let name = rest[..colon_pos].trim().to_string();
+    let type_str = rest[colon_pos + 1..].trim();
+
+    let (var_type, array_kind, is_optional) = parse_kotlin_type_annotation(type_str);
+    if is_optional {
+        var_mod.push(VariableModifier::OPTIONAL);
+    }
+
+    Some(Variable {
+        var_mod,
+        visibility: VariableVisibility::PRIVATE,
+        var_type,
+        array_kind,
+        name,
+    })
 }
 
 impl KotlinGenerator {
