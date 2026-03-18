@@ -73,6 +73,40 @@ pub enum Commands {
         #[arg(short, long, default_value = "./oml_output")]
         output: String,
     },
+
+    /// Translate files directly from one language to another
+    Translate {
+        /// Input files or directories to translate (e.g. hello.kt world.cpp)
+        files: Vec<String>,
+
+        /// Output directory for the translated files
+        #[arg(short, long, default_value = "./oml_output")]
+        output: String,
+
+        #[arg(long)]
+        cpp: bool,
+
+        #[arg(long)]
+        python: bool,
+
+        #[arg(long)]
+        java: bool,
+
+        #[arg(long)]
+        kotlin: bool,
+
+        #[arg(long)]
+        rust: bool,
+
+        #[arg(long)]
+        typescript: bool,
+
+        #[arg(long)]
+        sql: bool,
+
+        #[arg(long)]
+        use_data_class: bool,
+    },
 }
 
 impl OmlCli {
@@ -133,6 +167,22 @@ impl OmlCli {
 
         generators
     }
+}
+
+/// Builds generators from individual language flags (used by the Translate subcommand).
+pub fn get_generators_from_flags(
+    cpp: bool, python: bool, java: bool, kotlin: bool,
+    rust: bool, typescript: bool, sql: bool, use_data_class: bool,
+) -> Vec<Box<dyn Generate>> {
+    let mut generators: Vec<Box<dyn Generate>> = Vec::new();
+    if cpp { generators.push(Box::new(CppGenerator)); }
+    if python { generators.push(Box::new(PythonGenerator::new(use_data_class))); }
+    if kotlin { generators.push(Box::new(KotlinGenerator::new(use_data_class))); }
+    if java { generators.push(Box::new(JavaGenerator)); }
+    if rust { generators.push(Box::new(RustGenerator)); }
+    if typescript { generators.push(Box::new(TypescriptGenerator)); }
+    if sql { generators.push(Box::new(SqlGenerator)); }
+    generators
 }
 
 /// Returns the appropriate backwards generator for a file based on its extension.
