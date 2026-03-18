@@ -2,11 +2,13 @@ mod core;
 mod cli;
 mod generators;
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
 use clap::Parser;
 use cli::oml::{OmlCli, Commands, get_backwards_generator, get_generators_from_flags};
+use crate::core::import_resolver::resolve_all;
 use crate::core::oml_object::OmlObject;
 use crate::core::backwards_converting::OmlGenerator;
 use crate::core::generate::Generate;
@@ -33,7 +35,7 @@ fn main() {
         return;
     }
 
-    let oml_files = match cli.get_files() {
+    let root_files = match cli.get_files() {
         Ok(files) => files,
         Err(e) => {
             eprintln!("An error was encountered when parsing the input files: {:?}", e);
@@ -41,14 +43,31 @@ fn main() {
         }
     };
 
-    if oml_files.is_empty() {
+    if root_files.is_empty() {
         eprintln!("No .oml files found");
         return;
     }
 
-    // Validate custom/nested types across each file's objects
-    for oml_file in &oml_files {
-        if let Err(e) = OmlObject::validate_custom_types(&oml_file.objects) {
+    // Remember which paths are "root" files so we only generate code for them,
+    // not for files that were pulled in transitively via imports.
+    let root_paths: HashSet<_> = root_files.iter().map(|f| f.path.clone()).collect();
+
+    // Resolve all imports (parses imported files, detects cycles).
+    let (all_files, imported_names) = match resolve_all(root_files) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Import error: {}", e);
+            return;
+        }
+    };
+
+    // Validate custom/nested types for every file, taking imports into account.
+    for oml_file in &all_files {
+        let extra = imported_names
+            .get(&oml_file.path)
+            .cloned()
+            .unwrap_or_default();
+        if let Err(e) = OmlObject::validate_custom_types(&oml_file.objects, &extra) {
             eprintln!("Type error in {}.oml: {}", oml_file.file_name, e);
             return;
         }
@@ -68,7 +87,8 @@ fn main() {
         return;
     }
 
-    for oml_file in &oml_files {
+    // Only generate code for the files the user explicitly passed in.
+    for oml_file in all_files.iter().filter(|f| root_paths.contains(&f.path)) {
         for generator in &generators {
             match generator.generate(&oml_file.objects, &oml_file.file_name) {
                 Ok(content) => {

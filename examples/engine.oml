@@ -1,0 +1,4 @@
+class Engine {
+    public int32 horsepower;
+    public string model;
+}

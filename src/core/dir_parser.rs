@@ -33,9 +33,10 @@ pub fn parse_path(
             .to_string_lossy()
             .to_string();
 
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
         return match OmlObject::get_from_file(path) {
-            Ok(objects) => {
-                result.push(OmlFile { file_name, objects });
+            Ok((objects, imports)) => {
+                result.push(OmlFile { file_name, path: canonical, objects, imports });
                 Ok(result)
             },
             Err(_) => {
@@ -75,8 +76,9 @@ pub fn parse_path(
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
 
+            let canonical = entry_path.canonicalize().unwrap_or_else(|_| entry_path.clone());
             match OmlObject::get_from_file(&entry_path) {
-                Ok(objects) => result.push(OmlFile { file_name, objects }),
+                Ok((objects, imports)) => result.push(OmlFile { file_name, path: canonical, objects, imports }),
                 Err(e) => {
                     eprintln!("Warning: Failed to parse {}: {}", entry_path.display(), e);
                 }

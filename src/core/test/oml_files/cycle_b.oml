@@ -1,0 +1,5 @@
+import "cycle_a.oml";
+
+class B {
+    public string value;
+}

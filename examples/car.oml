@@ -1,0 +1,6 @@
+import "engine.oml";
+
+class Car {
+    public string name;
+    public Engine engine;
+}

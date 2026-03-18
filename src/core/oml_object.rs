@@ -1,7 +1,7 @@
 use std::cmp::PartialEq;
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use regex::Regex;
 
 use crate::core::errors;
@@ -56,7 +56,9 @@ pub struct OmlObject {
 #[derive(Debug)]
 pub struct OmlFile {
     pub file_name: String,
+    pub path: PathBuf,
     pub objects: Vec<OmlObject>,
+    pub imports: Vec<String>,
 }
 
 impl OmlObject {
@@ -75,8 +77,12 @@ impl OmlObject {
     }
 
     /// Validates that any non-built-in type used as a variable type in these
-    /// objects actually corresponds to another object defined in the same set.
-    pub fn validate_custom_types(objects: &[Self]) -> Result<(), Box<dyn std::error::Error>> {
+    /// objects actually corresponds to another object defined in the same set
+    /// OR is present in `imported_names` (types available via `import` statements).
+    pub fn validate_custom_types(
+        objects: &[Self],
+        imported_names: &HashSet<String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let object_names: HashSet<&str> = objects.iter().map(|o| o.name.as_str()).collect();
 
         for obj in objects {
@@ -88,9 +94,10 @@ impl OmlObject {
                 if !var.var_type.is_empty()
                     && !Self::is_builtin_type(&var.var_type)
                     && !object_names.contains(var.var_type.as_str())
+                    && !imported_names.contains(&var.var_type)
                 {
                     return Err(format!(
-                        "Type '{}' used in object '{}' is not a built-in type and no object with that name is defined in the same file",
+                        "Type '{}' used in object '{}' is not a built-in type, is not defined in the same file, and has not been imported",
                         var.var_type, obj.name
                     ).into());
                 }
@@ -100,9 +107,37 @@ impl OmlObject {
         Ok(())
     }
 
-    pub fn get_from_file(path: &Path) -> Result<Vec<Self>, Box<dyn std::error::Error>> {
+    /// Parses an OML file and returns its objects and any `import` directives.
+    pub fn get_from_file(path: &Path) -> Result<(Vec<Self>, Vec<String>), Box<dyn std::error::Error>> {
         let content = fs::read_to_string(path)?;
-        Self::scan_file(content)
+        Self::scan_file_with_imports(content)
+    }
+
+    /// Splits `content` into import declarations and the remaining OML source,
+    /// then parses the objects from the remainder.
+    pub fn scan_file_with_imports(content: String) -> Result<(Vec<Self>, Vec<String>), Box<dyn std::error::Error>> {
+        let mut imports: Vec<String> = Vec::new();
+        let mut rest = String::new();
+
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("import ") {
+                let after_keyword = trimmed["import ".len()..].trim();
+                let raw_path = after_keyword
+                    .trim_end_matches(';')
+                    .trim()
+                    .trim_matches('"');
+                if !raw_path.is_empty() {
+                    imports.push(raw_path.to_string());
+                }
+            } else {
+                rest.push_str(line);
+                rest.push('\n');
+            }
+        }
+
+        let objects = Self::scan_file(rest)?;
+        Ok((objects, imports))
     }
 
     pub fn scan_file(content: String) -> Result<Vec<Self>, Box<dyn std::error::Error>> {

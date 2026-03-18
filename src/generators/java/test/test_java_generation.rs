@@ -19,7 +19,7 @@ fn generate_and_write(oml_path: &str, file_name: &str) -> String {
     let generator = JavaGenerator;
 
     let path = Path::new(oml_path);
-    let oml_objects = OmlObject::get_from_file(path)
+    let (oml_objects, _imports) = OmlObject::get_from_file(path)
         .expect(&format!("Failed to parse OML file: {}", oml_path));
 
     let java_output = generator.generate(&oml_objects, file_name)
