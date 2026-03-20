@@ -4,7 +4,7 @@ Suggested GitHub Topics: rust code-generation transpiler oml developer-tools
 
 # OML — Object Markup Language
 
-> This project is actively under development. APIs and syntax are subject to change.
+> This collaborative project is actively under development.
 
 OML is a language-agnostic class definition format and transpiler. Write a data structure or class prototype once in OML, then generate idiomatic implementations in Python, Rust, TypeScript, Java, Kotlin, C++, or SQL — automatically.
 
