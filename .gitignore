@@ -5,3 +5,14 @@ oml_output
 
 test_results
 .claude
+
+.DS_Store
+**/.DS_Store
+*.iml
+__pycache__/
+*.pyc
+.env
+node_modules/
+.venv/
+venv/
+.cache/
