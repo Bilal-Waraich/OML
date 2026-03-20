@@ -93,7 +93,3 @@ OML is a joint project:
 
 - **Nikolay Tsonev** 
 - **Bilal Waraich** 
-
-## License
-
-See [LICENSE](LICENSE) if present, or check the repository for licensing information.
