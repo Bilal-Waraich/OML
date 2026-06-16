@@ -1,4 +1,4 @@
-use crate::core::oml_object::{
+﻿use crate::core::oml_object::{
     OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
 use crate::core::generate::{Generate, BackwardsGenerate};
@@ -58,7 +58,8 @@ impl BackwardsGenerate for SqlGenerator {
                                     var_type: "string".to_string(),
                                     array_kind: ArrayKind::None,
                                     name: clean.to_string(),
-                                });
+                                    default_value: None,
+});
                             }
                         }
                     }
@@ -70,7 +71,8 @@ impl BackwardsGenerate for SqlGenerator {
                         oml_type: ObjectType::ENUM,
                         name,
                         variables: vars,
-                    });
+                        instance_type: None,
+});
                 } else {
                     // Parse as struct from columns
                     for col in &columns {
@@ -82,7 +84,8 @@ impl BackwardsGenerate for SqlGenerator {
                         oml_type: ObjectType::STRUCT,
                         name,
                         variables: vars,
-                    });
+                        instance_type: None,
+});
                 }
                 continue;
             }
@@ -153,6 +156,7 @@ fn parse_sql_column(line: &str) -> Option<Variable> {
         var_type: reverse_sql_type(&sql_type_str),
         array_kind: ArrayKind::None,
         name,
+        default_value: None,
     })
 }
 
@@ -168,6 +172,7 @@ impl Generate for SqlGenerator {
                 // ENUMs become lookup tables with a single value column
                 ObjectType::ENUM => generate_enum_table(oml_object, &mut sql_file)?,
                 ObjectType::CLASS | ObjectType::STRUCT => generate_table(oml_object, &mut sql_file)?,
+                ObjectType::INSTANCE => {},
                 ObjectType::UNDECIDED => return Err("Cannot generate SQL for UNDECIDED object type".into()),
             }
             if i < oml_objects.len() - 1 {

@@ -1,4 +1,4 @@
-use std::fs;
+﻿use std::fs;
 use std::path::Path;
 
 use crate::core::generate::Generate;
@@ -138,11 +138,12 @@ fn test_color_enum_generates_cpp_file() {
         oml_type: ObjectType::ENUM,
         name: "Color".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Red".to_string() },
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Green".to_string() },
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Blue".to_string() },
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Yellow".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Red".to_string(), default_value: None },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Green".to_string(), default_value: None },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Blue".to_string(), default_value: None },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Yellow".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let generator = CppGenerator;

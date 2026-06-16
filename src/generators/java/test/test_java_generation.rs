@@ -1,4 +1,4 @@
-use std::fs;
+﻿use std::fs;
 use std::path::Path;
 
 use crate::core::generate::Generate;
@@ -150,8 +150,9 @@ fn test_enum_single_variant_ends_with_semicolon() {
         oml_type: ObjectType::ENUM,
         name: "Single".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Only".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Only".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = JavaGenerator.generate(std::slice::from_ref(&oml_object), "Single").unwrap();
@@ -165,8 +166,9 @@ fn test_const_field_generates_final_no_setter() {
         oml_type: ObjectType::CLASS,
         name: "Config".to_string(),
         variables: vec![
-            Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "version".to_string() },
+            Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "version".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = JavaGenerator.generate(std::slice::from_ref(&oml_object), "Config").unwrap();
@@ -183,9 +185,10 @@ fn test_static_field_not_in_constructor() {
         oml_type: ObjectType::CLASS,
         name: "Counter".to_string(),
         variables: vec![
-            Variable { var_mod: vec![VariableModifier::STATIC], visibility: VariableVisibility::PRIVATE, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "count".to_string() },
-            Variable { var_mod: vec![], visibility: VariableVisibility::PRIVATE, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "name".to_string() },
+            Variable { var_mod: vec![VariableModifier::STATIC], visibility: VariableVisibility::PRIVATE, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "count".to_string(), default_value: None },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PRIVATE, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "name".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = JavaGenerator.generate(std::slice::from_ref(&oml_object), "Counter").unwrap();
@@ -199,9 +202,10 @@ fn test_optional_params_come_after_required_in_constructor() {
         oml_type: ObjectType::CLASS,
         name: "Mixed".to_string(),
         variables: vec![
-            Variable { var_mod: vec![VariableModifier::OPTIONAL], visibility: VariableVisibility::PRIVATE, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "opt_first".to_string() },
-            Variable { var_mod: vec![], visibility: VariableVisibility::PRIVATE, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "required".to_string() },
+            Variable { var_mod: vec![VariableModifier::OPTIONAL], visibility: VariableVisibility::PRIVATE, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "opt_first".to_string(), default_value: None },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PRIVATE, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "required".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = JavaGenerator.generate(std::slice::from_ref(&oml_object), "Mixed").unwrap();
@@ -219,8 +223,9 @@ fn test_dynamic_list_generates_list_type_and_import() {
         oml_type: ObjectType::CLASS,
         name: "Container".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::Dynamic, name: "tags".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::Dynamic, name: "tags".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = JavaGenerator.generate(std::slice::from_ref(&oml_object), "Container").unwrap();
@@ -234,8 +239,9 @@ fn test_static_array_expands_with_size_comment() {
         oml_type: ObjectType::CLASS,
         name: "Matrix".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "float".to_string(), array_kind: ArrayKind::Static(4), name: "data".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "float".to_string(), array_kind: ArrayKind::Static(4), name: "data".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = JavaGenerator.generate(std::slice::from_ref(&oml_object), "Matrix").unwrap();
@@ -257,9 +263,10 @@ fn test_all_builtin_types_convert_to_java() {
         var_type: oml_type.to_string(),
         array_kind: ArrayKind::None,
         name: format!("field_{}", i),
+        default_value: None,
     }).collect();
 
-    let oml_object = OmlObject { oml_type: ObjectType::CLASS, name: "AllTypes".to_string(), variables };
+    let oml_object = OmlObject { oml_type: ObjectType::CLASS, name: "AllTypes".to_string(), variables, instance_type: None };
     let output = JavaGenerator.generate(std::slice::from_ref(&oml_object), "AllTypes").unwrap();
 
     for (i, (_, expected)) in pairs.iter().enumerate() {
@@ -270,7 +277,7 @@ fn test_all_builtin_types_convert_to_java() {
 
 #[test]
 fn test_undecided_object_type_returns_error() {
-    let oml_object = OmlObject { oml_type: ObjectType::UNDECIDED, name: "Bad".to_string(), variables: vec![] };
+    let oml_object = OmlObject { oml_type: ObjectType::UNDECIDED, name: "Bad".to_string(), variables: vec![], instance_type: None };
     assert!(JavaGenerator.generate(std::slice::from_ref(&oml_object), "Bad").is_err());
 }
 

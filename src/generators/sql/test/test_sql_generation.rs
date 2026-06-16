@@ -1,4 +1,4 @@
-use std::fs;
+﻿use std::fs;
 use std::path::Path;
 
 use crate::core::generate::Generate;
@@ -117,7 +117,8 @@ fn test_enum_empty_generates_no_insert() {
         oml_type: ObjectType::ENUM,
         name: "Empty".to_string(),
         variables: vec![],
-    };
+        instance_type: None,
+};
 
     let output = SqlGenerator.generate(std::slice::from_ref(&oml_object), "Empty").unwrap();
     assert!(output.contains("CREATE TABLE Empty ("));
@@ -130,9 +131,10 @@ fn test_optional_field_allows_null() {
         oml_type: ObjectType::CLASS,
         name: "User".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "name".to_string() },
-            Variable { var_mod: vec![VariableModifier::OPTIONAL], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "email".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "name".to_string(), default_value: None },
+            Variable { var_mod: vec![VariableModifier::OPTIONAL], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "email".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = SqlGenerator.generate(std::slice::from_ref(&oml_object), "User").unwrap();
@@ -146,8 +148,9 @@ fn test_static_array_expands_to_n_columns() {
         oml_type: ObjectType::CLASS,
         name: "Rgb".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "uint8".to_string(), array_kind: ArrayKind::Static(3), name: "color".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "uint8".to_string(), array_kind: ArrayKind::Static(3), name: "color".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = SqlGenerator.generate(std::slice::from_ref(&oml_object), "Rgb").unwrap();
@@ -164,9 +167,10 @@ fn test_dynamic_list_generates_junction_table_with_fk() {
         oml_type: ObjectType::CLASS,
         name: "Post".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "title".to_string() },
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::Dynamic, name: "tags".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "title".to_string(), default_value: None },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::Dynamic, name: "tags".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = SqlGenerator.generate(std::slice::from_ref(&oml_object), "Post").unwrap();
@@ -191,9 +195,10 @@ fn test_all_builtin_types_convert_to_sql() {
         var_type: oml_type.to_string(),
         array_kind: ArrayKind::None,
         name: format!("field_{}", i),
+        default_value: None,
     }).collect();
 
-    let oml_object = OmlObject { oml_type: ObjectType::CLASS, name: "AllTypes".to_string(), variables };
+    let oml_object = OmlObject { oml_type: ObjectType::CLASS, name: "AllTypes".to_string(), variables , instance_type: None };
     let output = SqlGenerator.generate(std::slice::from_ref(&oml_object), "AllTypes").unwrap();
 
     for (i, (_, expected)) in pairs.iter().enumerate() {
@@ -208,8 +213,9 @@ fn test_custom_type_maps_to_int_for_fk() {
         oml_type: ObjectType::CLASS,
         name: "Order".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "Customer".to_string(), array_kind: ArrayKind::None, name: "customer".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "Customer".to_string(), array_kind: ArrayKind::None, name: "customer".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = SqlGenerator.generate(std::slice::from_ref(&oml_object), "Order").unwrap();
@@ -219,7 +225,7 @@ fn test_custom_type_maps_to_int_for_fk() {
 
 #[test]
 fn test_undecided_object_type_returns_error() {
-    let oml_object = OmlObject { oml_type: ObjectType::UNDECIDED, name: "Bad".to_string(), variables: vec![] };
+    let oml_object = OmlObject { oml_type: ObjectType::UNDECIDED, name: "Bad".to_string(), variables: vec![], instance_type: None };
     assert!(SqlGenerator.generate(std::slice::from_ref(&oml_object), "Bad").is_err());
 }
 

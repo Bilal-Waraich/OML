@@ -1,4 +1,4 @@
-use crate::core::oml_object::{
+﻿use crate::core::oml_object::{
     OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
 use crate::core::generate::{Generate, BackwardsGenerate};
@@ -58,7 +58,8 @@ impl BackwardsGenerate for PythonGenerator {
                         oml_type: ObjectType::CLASS,
                         name,
                         variables: vars,
-                    });
+                        instance_type: None,
+});
                     continue;
                 }
             }
@@ -90,7 +91,8 @@ impl BackwardsGenerate for PythonGenerator {
                             var_type: "string".to_string(),
                             array_kind: ArrayKind::None,
                             name: variant_name,
-                        });
+                            default_value: None,
+});
                     }
                     i += 1;
                 }
@@ -98,7 +100,8 @@ impl BackwardsGenerate for PythonGenerator {
                     oml_type: ObjectType::ENUM,
                     name,
                     variables: vars,
-                });
+                    instance_type: None,
+});
                 continue;
             }
 
@@ -128,7 +131,8 @@ impl BackwardsGenerate for PythonGenerator {
                                 var_type,
                                 array_kind,
                                 name: pname,
-                            });
+                                default_value: None,
+});
                         }
                     }
                     // Stop at next class or top-level definition
@@ -141,7 +145,8 @@ impl BackwardsGenerate for PythonGenerator {
                     oml_type: ObjectType::CLASS,
                     name,
                     variables: vars,
-                });
+                    instance_type: None,
+});
                 continue;
             }
 
@@ -284,6 +289,7 @@ impl Generate for PythonGenerator {
                 ObjectType::ENUM => generate_enum(oml_object, &mut py_file)?,
                 ObjectType::CLASS => generate_class(oml_object, &mut py_file, self.use_data_class)?,
                 ObjectType::STRUCT => generate_class(oml_object, &mut py_file, true)?,
+                ObjectType::INSTANCE => {},
                 ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
             }
             if i < oml_objects.len() - 1 {
@@ -561,7 +567,8 @@ mod tests {
             var_type: ty.to_string(),
             array_kind: ArrayKind::None,
             name: name.to_string(),
-        }
+            default_value: None,
+}
     }
 
     // ── enum ─────────────────────────────────────────────────────────────────
@@ -576,6 +583,7 @@ mod tests {
                 var("Green", "", vec![]),
                 var("Blue", "", vec![]),
             ],
+            instance_type: None,
         };
         let out = to_python(&obj, false);
         assert!(out.contains("from enum import Enum"));
@@ -591,7 +599,8 @@ mod tests {
             oml_type: ObjectType::ENUM,
             name: "Empty".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
         let out = to_python(&obj, false);
         assert!(out.contains("class Empty(Enum):"));
         assert!(out.contains("\tpass"));
@@ -608,6 +617,7 @@ mod tests {
                 var("name", "string", vec![]),
                 var("age", "int32", vec![]),
             ],
+            instance_type: None,
         };
         let out = to_python(&obj, false);
         assert!(out.contains("class Person:"));
@@ -629,6 +639,7 @@ mod tests {
             variables: vec![
                 var("max_size", "int64", vec![VariableModifier::CONST]),
             ],
+            instance_type: None,
         };
         let out = to_python(&obj, false);
         assert!(out.contains("def max_size(self) -> int:"));
@@ -644,6 +655,7 @@ mod tests {
                 var("name", "string", vec![]),
                 var("nickname", "string", vec![VariableModifier::OPTIONAL]),
             ],
+            instance_type: None,
         };
         let out = to_python(&obj, false);
         assert!(out.contains("from typing import Optional"));
@@ -661,6 +673,7 @@ mod tests {
                 var("count", "int32", vec![VariableModifier::STATIC]),
                 var("name", "string", vec![]),
             ],
+            instance_type: None,
         };
         let out = to_python(&obj, false);
         // static goes at class level
@@ -675,7 +688,8 @@ mod tests {
             oml_type: ObjectType::CLASS,
             name: "Empty".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
         let out = to_python(&obj, false);
         assert!(out.contains("class Empty:"));
         assert!(out.contains("\tpass"));
@@ -693,6 +707,7 @@ mod tests {
                 var("name", "string", vec![]),
                 var("age", "int32", vec![]),
             ],
+            instance_type: None,
         };
         let out = to_python(&obj, true);
         assert!(out.contains("from dataclasses import dataclass, field"));
@@ -712,6 +727,7 @@ mod tests {
                 var("x", "float", vec![VariableModifier::CONST]),
                 var("y", "float", vec![VariableModifier::CONST]),
             ],
+            instance_type: None,
         };
         let out = to_python(&obj, true);
         assert!(out.contains("@dataclass(frozen=True)"));
@@ -726,6 +742,7 @@ mod tests {
                 var("name", "string", vec![]),
                 var("email", "string", vec![VariableModifier::OPTIONAL]),
             ],
+            instance_type: None,
         };
         let out = to_python(&obj, true);
         assert!(out.contains("from typing import Optional"));
@@ -746,6 +763,7 @@ mod tests {
                 var("count", "int32", vec![VariableModifier::STATIC]),
                 var("name", "string", vec![]),
             ],
+            instance_type: None,
         };
         let out = to_python(&obj, true);
         assert!(out.contains("from typing import ClassVar"));
@@ -759,7 +777,8 @@ mod tests {
             oml_type: ObjectType::CLASS,
             name: "Empty".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
         let out = to_python(&obj, true);
         assert!(out.contains("@dataclass"));
         assert!(out.contains("class Empty:"));
@@ -775,6 +794,7 @@ mod tests {
                 var("x", "double", vec![]),
                 var("y", "double", vec![]),
             ],
+            instance_type: None,
         };
         // even with use_data_class=false, STRUCT → dataclass
         let out = to_python(&obj, false);
@@ -801,7 +821,8 @@ mod tests {
             oml_type: ObjectType::UNDECIDED,
             name: "Bad".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
         let result = PythonGenerator::new(false).generate(std::slice::from_ref(&obj), "test");
         assert!(result.is_err());
     }
@@ -825,7 +846,8 @@ mod array_tests {
             var_type: ty.to_string(),
             array_kind: kind,
             name: name.to_string(),
-        }
+            default_value: None,
+}
     }
 
     #[test]
@@ -834,6 +856,7 @@ mod array_tests {
             oml_type: ObjectType::CLASS,
             name: "Arr".to_string(),
             variables: vec![array_var("scores", "uint16", ArrayKind::Static(4))],
+            instance_type: None,
         };
         let out = to_python(&obj, true);
         assert!(out.contains("scores: list[int]"), "Got: {}", out);
@@ -845,6 +868,7 @@ mod array_tests {
             oml_type: ObjectType::CLASS,
             name: "Lst".to_string(),
             variables: vec![array_var("tags", "string", ArrayKind::Dynamic)],
+            instance_type: None,
         };
         let out = to_python(&obj, true);
         assert!(out.contains("tags: list[str]"), "Got: {}", out);
@@ -856,6 +880,7 @@ mod array_tests {
             oml_type: ObjectType::CLASS,
             name: "Arr".to_string(),
             variables: vec![array_var("ids", "int32", ArrayKind::Static(10))],
+            instance_type: None,
         };
         let out = to_python(&obj, false);
         assert!(out.contains("ids: list[int]"), "Got: {}", out);
@@ -872,7 +897,9 @@ mod array_tests {
                 var_type: "string".to_string(),
                 array_kind: ArrayKind::Dynamic,
                 name: "tags".to_string(),
-            }],
+                default_value: None,
+}],
+            instance_type: None,
         };
         let out = to_python(&obj, true);
         assert!(out.contains("tags: Optional[list[str]] = None"), "Got: {}", out);

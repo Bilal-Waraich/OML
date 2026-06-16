@@ -1,4 +1,4 @@
-use crate::core::oml_object::{
+﻿use crate::core::oml_object::{
     OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
 use crate::core::generate::{Generate, BackwardsGenerate};
@@ -35,7 +35,8 @@ impl BackwardsGenerate for CppGenerator {
                             var_type: "string".to_string(),
                             array_kind: ArrayKind::None,
                             name: variant,
-                        });
+                            default_value: None,
+});
                     }
                     i += 1;
                 }
@@ -43,7 +44,8 @@ impl BackwardsGenerate for CppGenerator {
                     oml_type: ObjectType::ENUM,
                     name,
                     variables: vars,
-                });
+                    instance_type: None,
+});
             } else if (trimmed.starts_with("class ") || trimmed.starts_with("struct "))
                 && trimmed.ends_with('{')
             {
@@ -87,7 +89,8 @@ impl BackwardsGenerate for CppGenerator {
                     oml_type,
                     name,
                     variables: vars,
-                });
+                    instance_type: None,
+});
             }
             i += 1;
         }
@@ -150,6 +153,7 @@ fn parse_cpp_field(line: &str, default_vis: &VariableVisibility) -> Option<Varia
             var_type,
             array_kind,
             name,
+            default_value: None,
         });
     }
 
@@ -164,6 +168,7 @@ fn parse_cpp_field(line: &str, default_vis: &VariableVisibility) -> Option<Varia
             var_type: reverse_cpp_type(inner.trim()),
             array_kind: ArrayKind::Dynamic,
             name,
+            default_value: None,
         });
     }
 
@@ -182,6 +187,7 @@ fn parse_cpp_field(line: &str, default_vis: &VariableVisibility) -> Option<Varia
                     var_type: reverse_cpp_type(elem_type),
                     array_kind: ArrayKind::Static(size),
                     name,
+                    default_value: None,
                 });
             }
         }
@@ -198,6 +204,7 @@ fn parse_cpp_field(line: &str, default_vis: &VariableVisibility) -> Option<Varia
             var_type: reverse_cpp_type(&cpp_type),
             array_kind: ArrayKind::None,
             name,
+            default_value: None,
         });
     }
 
@@ -261,6 +268,7 @@ impl Generate for CppGenerator {
             match &oml_object.oml_type {
                 ObjectType::ENUM => generate_enum(oml_object, &mut cpp_file)?,
                 ObjectType::CLASS | ObjectType::STRUCT => generate_class_or_struct(oml_object, &mut cpp_file)?,
+                ObjectType::INSTANCE => {},
                 ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
             }
             if i < oml_objects.len() - 1 {
@@ -623,22 +631,26 @@ mod tests {
                     var_type: "".to_string(),
                     array_kind: ArrayKind::None,
                     name: "Red".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
                     array_kind: ArrayKind::None,
                     name: "Green".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
                     array_kind: ArrayKind::None,
                     name: "Blue".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let mut output = String::new();
@@ -664,8 +676,10 @@ mod tests {
                     var_type: "".to_string(),
                     array_kind: ArrayKind::None,
                     name: "Active".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let mut output = String::new();
@@ -683,7 +697,8 @@ mod tests {
             oml_type: ObjectType::ENUM,
             name: "Empty".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
 
         let mut output = String::new();
         generate_enum(&oml_object, &mut output).unwrap();
@@ -706,22 +721,26 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "public_var".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "private_var".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PROTECTED,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "protected_var".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let mut output = String::new();
@@ -748,15 +767,18 @@ mod tests {
                     var_type: "float".to_string(),
                     array_kind: ArrayKind::None,
                     name: "x".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "float".to_string(),
                     array_kind: ArrayKind::None,
                     name: "y".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let mut output = String::new();
@@ -775,7 +797,8 @@ mod tests {
             oml_type: ObjectType::CLASS,
             name: "EmptyClass".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
 
         let mut output = String::new();
         generate_class_or_struct(&oml_object, &mut output).unwrap();
@@ -794,7 +817,8 @@ mod tests {
             var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
             name: "count".to_string(),
-        };
+            default_value: None,
+};
 
         let mut output = String::new();
         convert_modifiers_and_type(&var, &mut output).unwrap();
@@ -811,7 +835,8 @@ mod tests {
             var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
             name: "MAX_SIZE".to_string(),
-        };
+            default_value: None,
+};
 
         let mut output = String::new();
         convert_modifiers_and_type(&var, &mut output).unwrap();
@@ -828,7 +853,8 @@ mod tests {
             var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
             name: "MAX_VALUE".to_string(),
-        };
+            default_value: None,
+};
 
         let mut output = String::new();
         convert_modifiers_and_type(&var, &mut output).unwrap();
@@ -851,7 +877,8 @@ mod tests {
             var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
             name: "value".to_string(),
-        };
+            default_value: None,
+};
 
         let mut output = String::new();
         convert_modifiers_and_type(&var, &mut output).unwrap();
@@ -869,7 +896,8 @@ mod tests {
             var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
             name: "nickname".to_string(),
-        };
+            default_value: None,
+};
 
         let mut output = String::new();
         convert_modifiers_and_type(&var, &mut output).unwrap();
@@ -885,7 +913,8 @@ mod tests {
             var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
             name: "cache".to_string(),
-        };
+            default_value: None,
+};
 
         let mut output = String::new();
         convert_modifiers_and_type(&var, &mut output).unwrap();
@@ -902,7 +931,8 @@ mod tests {
             var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
             name: "config".to_string(),
-        };
+            default_value: None,
+};
 
         let mut output = String::new();
         convert_modifiers_and_type(&var, &mut output).unwrap();
@@ -958,15 +988,18 @@ mod tests {
                     var_type: "".to_string(),
                     array_kind: ArrayKind::None,
                     name: "Red".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
                     array_kind: ArrayKind::None,
                     name: "Blue".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let result = oml_to_cpp(&oml_object, "Color").unwrap();
@@ -998,15 +1031,18 @@ mod tests {
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "name".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "age".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let result = oml_to_cpp(&oml_object, "Person").unwrap();
@@ -1025,7 +1061,8 @@ mod tests {
             oml_type: ObjectType::CLASS,
             name: "MyClass".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
 
         let result = oml_to_cpp(&oml_object, "my_class").unwrap();
 
@@ -1040,7 +1077,8 @@ mod tests {
             oml_type: ObjectType::UNDECIDED,
             name: "Test".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
 
         let result = oml_to_cpp(&oml_object, "Test");
 
@@ -1061,22 +1099,26 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "pub1".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "priv1".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "pub2".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let mut output = String::new();
@@ -1105,15 +1147,18 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "var1".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "var2".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let mut output = String::new();
@@ -1137,8 +1182,10 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "var1".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let mut output = String::new();
@@ -1162,22 +1209,26 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "MAX_SIZE".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![VariableModifier::OPTIONAL],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "nickname".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PROTECTED,
                     var_type: "float".to_string(),
                     array_kind: ArrayKind::None,
                     name: "value".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let result = oml_to_cpp(&oml_object, "ComplexClass").unwrap();
@@ -1201,22 +1252,26 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "var1".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "var2".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "var3".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let mut output = String::new();
@@ -1233,13 +1288,15 @@ mod tests {
             oml_type: ObjectType::CLASS,
             name: "MyClass".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
 
         let struct_obj = OmlObject {
             oml_type: ObjectType::STRUCT,
             name: "MyStruct".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
 
         let mut class_output = String::new();
         let mut struct_output = String::new();
@@ -1265,7 +1322,8 @@ mod tests {
             var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
             name: "value".to_string(),
-        };
+            default_value: None,
+};
 
         let mut output = String::new();
         convert_modifiers_and_type(&var, &mut output).unwrap();
@@ -1287,8 +1345,10 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let result = oml_to_cpp(&oml_object, "Test");
@@ -1303,7 +1363,8 @@ mod tests {
             oml_type: ObjectType::CLASS,
             name: "My_Class-123".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
 
         let mut output = String::new();
         generate_class_or_struct(&oml_object, &mut output).unwrap();
@@ -1325,8 +1386,10 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: long_name.to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let mut output = String::new();
@@ -1349,8 +1412,10 @@ mod tests {
                     var_type: "".to_string(),
                     array_kind: ArrayKind::None,
                     name: "Value".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let mut output = String::new();
@@ -1365,7 +1430,8 @@ mod tests {
             oml_type: ObjectType::CLASS,
             name: "Test".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
 
         let result = oml_to_cpp(&oml_object, "Test").unwrap();
 
@@ -1390,7 +1456,8 @@ mod tests {
             oml_type: ObjectType::CLASS,
             name: "Test".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
 
         let mut output = String::new();
         generate_class_or_struct(&oml_object, &mut output).unwrap();
@@ -1404,7 +1471,8 @@ mod tests {
             oml_type: ObjectType::ENUM,
             name: "Test".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
 
         let mut output = String::new();
         generate_enum(&oml_object, &mut output).unwrap();
@@ -1421,7 +1489,8 @@ mod tests {
             oml_type: ObjectType::CLASS,
             name: "Test".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
 
         let result = oml_to_cpp(&oml_object, "Test").unwrap();
 
@@ -1445,8 +1514,10 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "value".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let result = oml_to_cpp(&oml_object, "Test").unwrap();
@@ -1469,8 +1540,10 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "prot_var".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let mut output = String::new();
@@ -1499,6 +1572,7 @@ mod tests {
                 var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                 name: format!("var{}", i),
+                default_value: None,
             });
         }
 
@@ -1506,6 +1580,7 @@ mod tests {
             oml_type: ObjectType::CLASS,
             name: "LargeClass".to_string(),
             variables,
+            instance_type: None,
         };
 
         let result = oml_to_cpp(&oml_object, "LargeClass");
@@ -1526,6 +1601,7 @@ mod tests {
                 var_type: "".to_string(),
                     array_kind: ArrayKind::None,
                 name: format!("Variant{}", i),
+                default_value: None,
             });
         }
 
@@ -1533,6 +1609,7 @@ mod tests {
             oml_type: ObjectType::ENUM,
             name: "LargeEnum".to_string(),
             variables,
+            instance_type: None,
         };
 
         let mut output = String::new();
@@ -1557,6 +1634,7 @@ mod tests {
                 var_type: type_name.to_string(),
                     array_kind: ArrayKind::None,
                 name: format!("var{}", i),
+                default_value: None,
             });
         }
 
@@ -1564,6 +1642,7 @@ mod tests {
             oml_type: ObjectType::CLASS,
             name: "AllTypes".to_string(),
             variables,
+            instance_type: None,
         };
 
         let result = oml_to_cpp(&oml_object, "AllTypes").unwrap();
@@ -1590,8 +1669,10 @@ mod tests {
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "text".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let result = oml_to_cpp(&oml_object, "StringTest").unwrap();
@@ -1612,15 +1693,18 @@ mod tests {
                     var_type: "bool".to_string(),
                     array_kind: ArrayKind::None,
                     name: "flag".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "char".to_string(),
                     array_kind: ArrayKind::None,
                     name: "letter".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let result = oml_to_cpp(&oml_object, "BasicTypes").unwrap();
@@ -1646,7 +1730,8 @@ mod array_tests {
             var_type: ty.to_string(),
             array_kind: kind,
             name: name.to_string(),
-        }
+            default_value: None,
+}
     }
 
     #[test]
@@ -1655,6 +1740,7 @@ mod array_tests {
             oml_type: ObjectType::CLASS,
             name: "Arr".to_string(),
             variables: vec![array_var("scores", "uint16", ArrayKind::Static(4))],
+            instance_type: None,
         };
         let out = to_cpp(&obj);
         assert!(out.contains("std::array<uint16_t, 4>"), "Got: {}", out);
@@ -1667,6 +1753,7 @@ mod array_tests {
             oml_type: ObjectType::CLASS,
             name: "Lst".to_string(),
             variables: vec![array_var("tags", "string", ArrayKind::Dynamic)],
+            instance_type: None,
         };
         let out = to_cpp(&obj);
         assert!(out.contains("std::vector<std::string>"), "Got: {}", out);
@@ -1679,6 +1766,7 @@ mod array_tests {
             oml_type: ObjectType::CLASS,
             name: "Plain".to_string(),
             variables: vec![array_var("x", "int32", ArrayKind::None)],
+            instance_type: None,
         };
         let out = to_cpp(&obj);
         assert!(!out.contains("#include <array>"), "Got: {}", out);

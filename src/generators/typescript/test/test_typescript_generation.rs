@@ -1,4 +1,4 @@
-use std::fs;
+﻿use std::fs;
 use std::path::Path;
 
 use crate::core::generate::Generate;
@@ -132,8 +132,9 @@ fn test_enum_single_variant_no_trailing_comma() {
         oml_type: ObjectType::ENUM,
         name: "Single".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Only".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "Only".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = TypescriptGenerator.generate(std::slice::from_ref(&oml_object), "Single").unwrap();
@@ -147,7 +148,8 @@ fn test_empty_class_no_constructor() {
         oml_type: ObjectType::CLASS,
         name: "Empty".to_string(),
         variables: vec![],
-    };
+        instance_type: None,
+};
 
     let output = TypescriptGenerator.generate(std::slice::from_ref(&oml_object), "Empty").unwrap();
     assert!(output.contains("export class Empty {"));
@@ -160,8 +162,9 @@ fn test_const_field_generates_readonly() {
         oml_type: ObjectType::CLASS,
         name: "Config".to_string(),
         variables: vec![
-            Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "version".to_string() },
+            Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "version".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = TypescriptGenerator.generate(std::slice::from_ref(&oml_object), "Config").unwrap();
@@ -174,9 +177,10 @@ fn test_static_field_not_in_constructor() {
         oml_type: ObjectType::CLASS,
         name: "Counter".to_string(),
         variables: vec![
-            Variable { var_mod: vec![VariableModifier::STATIC], visibility: VariableVisibility::PUBLIC, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "count".to_string() },
-            Variable { var_mod: vec![], visibility: VariableVisibility::PRIVATE, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "name".to_string() },
+            Variable { var_mod: vec![VariableModifier::STATIC], visibility: VariableVisibility::PUBLIC, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "count".to_string(), default_value: None },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PRIVATE, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "name".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = TypescriptGenerator.generate(std::slice::from_ref(&oml_object), "Counter").unwrap();
@@ -190,10 +194,11 @@ fn test_visibility_modifiers_emitted() {
         oml_type: ObjectType::CLASS,
         name: "Vis".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC,    var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "pub_val".to_string() },
-            Variable { var_mod: vec![], visibility: VariableVisibility::PROTECTED, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "prot_val".to_string() },
-            Variable { var_mod: vec![], visibility: VariableVisibility::PRIVATE,   var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "priv_val".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC,    var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "pub_val".to_string(), default_value: None },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PROTECTED, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "prot_val".to_string(), default_value: None },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PRIVATE,   var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "priv_val".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = TypescriptGenerator.generate(std::slice::from_ref(&oml_object), "Vis").unwrap();
@@ -218,9 +223,10 @@ fn test_all_builtin_types_convert_to_ts() {
         var_type: oml_type.to_string(),
         array_kind: ArrayKind::None,
         name: format!("field_{}", i),
+        default_value: None,
     }).collect();
 
-    let oml_object = OmlObject { oml_type: ObjectType::CLASS, name: "AllTypes".to_string(), variables };
+    let oml_object = OmlObject { oml_type: ObjectType::CLASS, name: "AllTypes".to_string(), variables, instance_type: None };
     let output = TypescriptGenerator.generate(std::slice::from_ref(&oml_object), "AllTypes").unwrap();
 
     for (i, (_, expected)) in vars.iter().enumerate() {
@@ -231,7 +237,7 @@ fn test_all_builtin_types_convert_to_ts() {
 
 #[test]
 fn test_undecided_object_type_returns_error() {
-    let oml_object = OmlObject { oml_type: ObjectType::UNDECIDED, name: "Bad".to_string(), variables: vec![] };
+    let oml_object = OmlObject { oml_type: ObjectType::UNDECIDED, name: "Bad".to_string(), variables: vec![], instance_type: None };
     assert!(TypescriptGenerator.generate(std::slice::from_ref(&oml_object), "Bad").is_err());
 }
 

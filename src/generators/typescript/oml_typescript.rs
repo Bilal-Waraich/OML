@@ -1,4 +1,4 @@
-use crate::core::oml_object::{
+﻿use crate::core::oml_object::{
     OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
 use crate::core::generate::{Generate, BackwardsGenerate};
@@ -36,7 +36,8 @@ impl BackwardsGenerate for TypescriptGenerator {
                             var_type: "string".to_string(),
                             array_kind: ArrayKind::None,
                             name: variant,
-                        });
+                            default_value: None,
+});
                     }
                     i += 1;
                 }
@@ -44,7 +45,8 @@ impl BackwardsGenerate for TypescriptGenerator {
                     oml_type: ObjectType::ENUM,
                     name,
                     variables: vars,
-                });
+                    instance_type: None,
+});
             } else if trimmed.starts_with("export class ") && trimmed.ends_with('{') {
                 let name = trimmed
                     .strip_prefix("export class ")
@@ -77,7 +79,8 @@ impl BackwardsGenerate for TypescriptGenerator {
                     oml_type: ObjectType::CLASS,
                     name,
                     variables: vars,
-                });
+                    instance_type: None,
+});
                 continue;
             }
             i += 1;
@@ -196,6 +199,7 @@ impl Generate for TypescriptGenerator {
                 ObjectType::CLASS => generate_class(oml_object, &mut ts_file)?,
                 // TypeScript has no struct keyword; structs map to classes
                 ObjectType::STRUCT => generate_class(oml_object, &mut ts_file)?,
+                ObjectType::INSTANCE => {},
                 ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
             }
             if i < oml_objects.len() - 1 {

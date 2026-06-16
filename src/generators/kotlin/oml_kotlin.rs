@@ -1,4 +1,4 @@
-use crate::core::oml_object::{
+﻿use crate::core::oml_object::{
     OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
 use crate::core::generate::{Generate, BackwardsGenerate};
@@ -37,7 +37,8 @@ impl BackwardsGenerate for KotlinGenerator {
                             var_type: "string".to_string(),
                             array_kind: ArrayKind::None,
                             name: variant,
-                        });
+                            default_value: None,
+});
                     }
                     i += 1;
                 }
@@ -45,7 +46,8 @@ impl BackwardsGenerate for KotlinGenerator {
                     oml_type: ObjectType::ENUM,
                     name,
                     variables: vars,
-                });
+                    instance_type: None,
+});
             } else if (trimmed.starts_with("data class ") || trimmed.starts_with("class "))
                 && (trimmed.contains('(') || trimmed.ends_with('{'))
             {
@@ -100,7 +102,8 @@ impl BackwardsGenerate for KotlinGenerator {
                     oml_type,
                     name,
                     variables: vars,
-                });
+                    instance_type: None,
+});
             }
             i += 1;
         }
@@ -196,6 +199,7 @@ fn parse_kotlin_param(line: &str) -> Option<Variable> {
         var_type,
         array_kind,
         name,
+        default_value: None,
     })
 }
 
@@ -230,6 +234,7 @@ fn parse_kotlin_companion_var(line: &str) -> Option<Variable> {
         var_type,
         array_kind,
         name,
+        default_value: None,
     })
 }
 
@@ -251,6 +256,7 @@ impl Generate for KotlinGenerator {
                 ObjectType::ENUM => generate_enum(oml_object, &mut kt_file)?,
                 ObjectType::CLASS => generate_class(oml_object, &mut kt_file, self.use_data_class)?,
                 ObjectType::STRUCT => generate_class(oml_object, &mut kt_file, true)?,
+                ObjectType::INSTANCE => {},
                 ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
             }
             if i < oml_objects.len() - 1 {
@@ -496,22 +502,26 @@ mod tests {
                     var_type: "".to_string(),
                     array_kind: ArrayKind::None,
                     name: "Red".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
                     array_kind: ArrayKind::None,
                     name: "Green".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "".to_string(),
                     array_kind: ArrayKind::None,
                     name: "Blue".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Color").unwrap();
@@ -535,8 +545,10 @@ mod tests {
                     var_type: "".to_string(),
                     array_kind: ArrayKind::None,
                     name: "Only".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Single").unwrap();
@@ -551,7 +563,8 @@ mod tests {
             oml_type: ObjectType::ENUM,
             name: "Empty".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
 
         let output = oml_to_kotlin(&oml_object, "Empty").unwrap();
         assert!(output.contains("enum class Empty {"));
@@ -572,15 +585,18 @@ mod tests {
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "name".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "age".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Person").unwrap();
@@ -601,15 +617,18 @@ mod tests {
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "name".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "age".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin_no_data(&oml_object, "Person").unwrap();
@@ -631,15 +650,18 @@ mod tests {
                     var_type: "double".to_string(),
                     array_kind: ArrayKind::None,
                     name: "x".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "double".to_string(),
                     array_kind: ArrayKind::None,
                     name: "y".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         // Even with no-data-class, structs should be data class
@@ -653,7 +675,8 @@ mod tests {
             oml_type: ObjectType::CLASS,
             name: "Empty".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
 
         let output = oml_to_kotlin(&oml_object, "Empty").unwrap();
         assert!(output.contains("data class Empty"));
@@ -672,22 +695,26 @@ mod tests {
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "name".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![VariableModifier::OPTIONAL],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "email".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![VariableModifier::OPTIONAL],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "age".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "User").unwrap();
@@ -708,15 +735,18 @@ mod tests {
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "optional_first".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "required".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Mixed").unwrap();
@@ -738,8 +768,10 @@ mod tests {
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "name".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Config").unwrap();
@@ -759,8 +791,10 @@ mod tests {
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "name".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Config").unwrap();
@@ -779,8 +813,10 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "value".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Config").unwrap();
@@ -800,15 +836,18 @@ mod tests {
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "name".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![VariableModifier::STATIC],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "count".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Config").unwrap();
@@ -828,8 +867,10 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "MAX".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Constants").unwrap();
@@ -849,8 +890,10 @@ mod tests {
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "instance".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Config").unwrap();
@@ -872,8 +915,10 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "x".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Foo").unwrap();
@@ -894,8 +939,10 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "x".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Foo").unwrap();
@@ -914,8 +961,10 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "x".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Foo").unwrap();
@@ -934,22 +983,26 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "pub_val".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PROTECTED,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "prot_val".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "priv_val".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Mixed").unwrap();
@@ -1003,11 +1056,12 @@ mod tests {
             oml_type: ObjectType::ENUM,
             name: "Direction".to_string(),
             variables: vec![
-                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "North".to_string() },
-                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "South".to_string() },
-                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "East".to_string() },
-                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "West".to_string() },
+                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "North".to_string(), default_value: None },
+                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "South".to_string(), default_value: None },
+                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "East".to_string(), default_value: None },
+                Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "West".to_string(), default_value: None },
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Direction").unwrap();
@@ -1033,8 +1087,10 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "bar".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Foo").unwrap();
@@ -1050,7 +1106,8 @@ mod tests {
             oml_type: ObjectType::UNDECIDED,
             name: "Bad".to_string(),
             variables: vec![],
-        };
+            instance_type: None,
+};
 
         let result = oml_to_kotlin(&oml_object, "Bad");
         assert!(result.is_err());
@@ -1068,22 +1125,26 @@ mod tests {
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "id".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![],
                     visibility: VariableVisibility::PUBLIC,
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "count".to_string(),
-                },
+                    default_value: None,
+},
                 Variable {
                     var_mod: vec![VariableModifier::OPTIONAL],
                     visibility: VariableVisibility::PRIVATE,
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "description".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Example").unwrap();
@@ -1110,6 +1171,7 @@ mod tests {
                 var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                 name: format!("var_{}", i),
+                default_value: None,
             });
         }
 
@@ -1117,6 +1179,7 @@ mod tests {
             oml_type: ObjectType::CLASS,
             name: "ManyVars".to_string(),
             variables,
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "ManyVars").unwrap();
@@ -1135,12 +1198,14 @@ mod tests {
             var_type: "".to_string(),
                     array_kind: ArrayKind::None,
             name: format!("Variant{}", i),
+            default_value: None,
         }).collect();
 
         let oml_object = OmlObject {
             oml_type: ObjectType::ENUM,
             name: "BigEnum".to_string(),
             variables,
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "BigEnum").unwrap();
@@ -1166,6 +1231,7 @@ mod tests {
                 var_type: oml_type.to_string(),
                     array_kind: ArrayKind::None,
                 name: format!("field_{}", i),
+                default_value: None,
             }
         }).collect();
 
@@ -1173,6 +1239,7 @@ mod tests {
             oml_type: ObjectType::CLASS,
             name: "AllTypes".to_string(),
             variables,
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "AllTypes").unwrap();
@@ -1195,8 +1262,10 @@ mod tests {
                     var_type: "string".to_string(),
                     array_kind: ArrayKind::None,
                     name: "value".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Foo").unwrap();
@@ -1215,8 +1284,10 @@ mod tests {
                     var_type: "int32".to_string(),
                     array_kind: ArrayKind::None,
                     name: "everything".to_string(),
-                },
+                    default_value: None,
+},
             ],
+            instance_type: None,
         };
 
         let output = oml_to_kotlin(&oml_object, "Full").unwrap();

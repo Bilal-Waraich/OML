@@ -1,4 +1,4 @@
-use crate::core::oml_object::{
+﻿use crate::core::oml_object::{
     OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier, ArrayKind
 };
 use crate::core::generate::{Generate, BackwardsGenerate};
@@ -35,7 +35,8 @@ impl BackwardsGenerate for JavaGenerator {
                             var_type: "string".to_string(),
                             array_kind: ArrayKind::None,
                             name: variant,
-                        });
+                            default_value: None,
+});
                     }
                     i += 1;
                 }
@@ -43,7 +44,8 @@ impl BackwardsGenerate for JavaGenerator {
                     oml_type: ObjectType::ENUM,
                     name,
                     variables: vars,
-                });
+                    instance_type: None,
+});
             } else if trimmed.starts_with("public class ") && trimmed.ends_with('{') {
                 let name = trimmed
                     .strip_prefix("public class ")
@@ -77,7 +79,8 @@ impl BackwardsGenerate for JavaGenerator {
                     oml_type: ObjectType::CLASS,
                     name,
                     variables: vars,
-                });
+                    instance_type: None,
+});
                 continue;
             }
             i += 1;
@@ -139,7 +142,7 @@ fn parse_java_field(line: &str) -> Option<Variable> {
     if type_token.starts_with("List<") && type_token.ends_with('>') {
         let inner = &type_token[5..type_token.len() - 1];
         let oml_type = reverse_java_boxed_type(inner);
-        return Some(Variable { var_mod, visibility, var_type: oml_type, array_kind: ArrayKind::Dynamic, name });
+        return Some(Variable { var_mod, visibility, var_type: oml_type, array_kind: ArrayKind::Dynamic, name, default_value: None });
     }
 
     // Handle arrays: type[] /* [N] */
@@ -158,7 +161,7 @@ fn parse_java_field(line: &str) -> Option<Variable> {
             Some(n) => ArrayKind::Static(n),
             None => ArrayKind::Dynamic,
         };
-        return Some(Variable { var_mod, visibility, var_type: reverse_java_type(base), array_kind, name: name_str });
+        return Some(Variable { var_mod, visibility, var_type: reverse_java_type(base), array_kind, name: name_str, default_value: None });
     }
 
     Some(Variable {
@@ -167,6 +170,7 @@ fn parse_java_field(line: &str) -> Option<Variable> {
         var_type: reverse_java_type(type_token),
         array_kind: ArrayKind::None,
         name,
+        default_value: None,
     })
 }
 
@@ -205,6 +209,7 @@ impl Generate for JavaGenerator {
             match &oml_object.oml_type {
                 ObjectType::ENUM => generate_enum(oml_object, &mut java_file)?,
                 ObjectType::CLASS | ObjectType::STRUCT => generate_class(oml_object, &mut java_file)?,
+                ObjectType::INSTANCE => {},
                 ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
             }
             if i < oml_objects.len() - 1 {
