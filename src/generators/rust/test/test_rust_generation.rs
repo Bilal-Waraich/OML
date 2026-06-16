@@ -105,15 +105,31 @@ fn test_game_entity_arrays_generate_rs_file() {
 
 // ── Inline unit tests ──────────────────────────────────────────────────────────
 
+fn var(name: &str, var_type: &str, vis: VariableVisibility) -> Variable {
+    Variable {
+        var_mod: vec![],
+        visibility: vis,
+        var_type: var_type.to_string(),
+        array_kind: ArrayKind::None,
+        name: name.to_string(),
+        default_value: None,
+    }
+}
+
+fn obj(oml_type: ObjectType, name: &str, variables: Vec<Variable>) -> OmlObject {
+    OmlObject { oml_type, name: name.to_string(), variables, instance_type: None }
+}
+
 #[test]
 fn test_enum_capitalises_variant_names() {
     let oml_object = OmlObject {
         oml_type: ObjectType::ENUM,
         name: "Direction".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "north".to_string() },
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "south".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "north".to_string(), default_value: None },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "".to_string(), array_kind: ArrayKind::None, name: "south".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = RustGenerator.generate(std::slice::from_ref(&oml_object), "Direction").unwrap();
@@ -127,9 +143,10 @@ fn test_optional_field_wraps_in_option() {
         oml_type: ObjectType::CLASS,
         name: "User".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "name".to_string() },
-            Variable { var_mod: vec![VariableModifier::OPTIONAL], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "email".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "name".to_string(), default_value: None },
+            Variable { var_mod: vec![VariableModifier::OPTIONAL], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "email".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = RustGenerator.generate(std::slice::from_ref(&oml_object), "User").unwrap();
@@ -143,8 +160,9 @@ fn test_protected_visibility_maps_to_pub_crate() {
         oml_type: ObjectType::STRUCT,
         name: "Foo".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PROTECTED, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "value".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PROTECTED, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "value".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = RustGenerator.generate(std::slice::from_ref(&oml_object), "Foo").unwrap();
@@ -157,9 +175,10 @@ fn test_static_const_generates_impl_block_with_associated_const() {
         oml_type: ObjectType::CLASS,
         name: "Config".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PRIVATE, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "name".to_string() },
-            Variable { var_mod: vec![VariableModifier::STATIC, VariableModifier::CONST], visibility: VariableVisibility::PUBLIC, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "max".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PRIVATE, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "name".to_string(), default_value: None },
+            Variable { var_mod: vec![VariableModifier::STATIC, VariableModifier::CONST], visibility: VariableVisibility::PUBLIC, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "max".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = RustGenerator.generate(std::slice::from_ref(&oml_object), "Config").unwrap();
@@ -175,8 +194,9 @@ fn test_static_array_generates_fixed_size_array_type() {
         oml_type: ObjectType::STRUCT,
         name: "Matrix".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "float".to_string(), array_kind: ArrayKind::Static(4), name: "data".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "float".to_string(), array_kind: ArrayKind::Static(4), name: "data".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = RustGenerator.generate(std::slice::from_ref(&oml_object), "Matrix").unwrap();
@@ -189,8 +209,9 @@ fn test_dynamic_list_generates_vec() {
         oml_type: ObjectType::CLASS,
         name: "Container".to_string(),
         variables: vec![
-            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::Dynamic, name: "tags".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "string".to_string(), array_kind: ArrayKind::Dynamic, name: "tags".to_string(), default_value: None },
         ],
+        instance_type: None,
     };
 
     let output = RustGenerator.generate(std::slice::from_ref(&oml_object), "Container").unwrap();
@@ -212,9 +233,15 @@ fn test_all_builtin_types_convert_to_rs() {
         var_type: oml_type.to_string(),
         array_kind: ArrayKind::None,
         name: format!("field_{}", i),
+        default_value: None,
     }).collect();
 
-    let oml_object = OmlObject { oml_type: ObjectType::STRUCT, name: "AllTypes".to_string(), variables };
+    let oml_object = OmlObject {
+        oml_type: ObjectType::STRUCT,
+        name: "AllTypes".to_string(),
+        variables,
+        instance_type: None,
+    };
     let output = RustGenerator.generate(std::slice::from_ref(&oml_object), "AllTypes").unwrap();
 
     for (i, (_, expected)) in pairs.iter().enumerate() {
@@ -225,11 +252,37 @@ fn test_all_builtin_types_convert_to_rs() {
 
 #[test]
 fn test_undecided_object_type_returns_error() {
-    let oml_object = OmlObject { oml_type: ObjectType::UNDECIDED, name: "Bad".to_string(), variables: vec![] };
+    let oml_object = OmlObject {
+        oml_type: ObjectType::UNDECIDED,
+        name: "Bad".to_string(),
+        variables: vec![],
+        instance_type: None,
+    };
     assert!(RustGenerator.generate(std::slice::from_ref(&oml_object), "Bad").is_err());
 }
 
 #[test]
 fn test_extension_is_rs() {
     assert_eq!(RustGenerator.extension(), "rs");
+}
+
+#[test]
+fn test_instance_generates_static_binding() {
+    let oml_object = OmlObject {
+        oml_type: ObjectType::INSTANCE,
+        name: "TASK_L".to_string(),
+        variables: vec![
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: String::new(), array_kind: ArrayKind::None, name: "priority".to_string(), default_value: Some("1".to_string()) },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: String::new(), array_kind: ArrayKind::None, name: "memory_start".to_string(), default_value: Some("0x8008_1000".to_string()) },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: String::new(), array_kind: ArrayKind::None, name: "exclusive_cap_mask".to_string(), default_value: Some("0x00000001".to_string()) },
+        ],
+        instance_type: Some("TaskConfig".to_string()),
+    };
+
+    let output = RustGenerator.generate(std::slice::from_ref(&oml_object), "task_l").unwrap();
+    assert!(output.contains("pub static TASK_L: TaskConfig = TaskConfig {"));
+    assert!(output.contains("\tpriority: 1,"));
+    assert!(output.contains("\tmemory_start: 0x8008_1000,"));
+    assert!(output.contains("\texclusive_cap_mask: 0x00000001,"));
+    assert!(output.contains("};"));
 }

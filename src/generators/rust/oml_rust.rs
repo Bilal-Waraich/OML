@@ -35,6 +35,7 @@ impl BackwardsGenerate for RustGenerator {
                             var_type: "string".to_string(),
                             array_kind: ArrayKind::None,
                             name: variant,
+                            default_value: None,
                         });
                     }
                     i += 1;
@@ -43,6 +44,7 @@ impl BackwardsGenerate for RustGenerator {
                     oml_type: ObjectType::ENUM,
                     name,
                     variables: vars,
+                    instance_type: None,
                 });
             } else if trimmed.starts_with("pub struct ") && trimmed.ends_with('{') {
                 let name = trimmed
@@ -83,6 +85,7 @@ impl BackwardsGenerate for RustGenerator {
                     oml_type: ObjectType::STRUCT,
                     name,
                     variables: vars,
+                    instance_type: None,
                 });
             }
             i += 1;
@@ -144,6 +147,7 @@ fn parse_rust_field(line: &str) -> Option<Variable> {
         var_type,
         array_kind,
         name,
+        default_value: None,
     })
 }
 
@@ -224,6 +228,7 @@ fn parse_rust_associated_const(line: &str) -> Option<Variable> {
         var_type,
         array_kind,
         name,
+        default_value: None,
     })
 }
 
@@ -243,6 +248,7 @@ impl Generate for RustGenerator {
             match &oml_object.oml_type {
                 ObjectType::ENUM => generate_enum(oml_object, &mut rs_file)?,
                 ObjectType::CLASS | ObjectType::STRUCT => generate_struct(oml_object, &mut rs_file)?,
+                ObjectType::INSTANCE => generate_instance(oml_object, &mut rs_file)?,
                 ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
             }
             if i < oml_objects.len() - 1 {
@@ -384,6 +390,23 @@ fn type_annotation(var_type: &str, array_kind: &ArrayKind, is_optional: bool) ->
     } else {
         with_array
     }
+}
+
+/// Emits a `pub static NAME: TypeName = TypeName { field: value, ... };` block.
+///
+/// Values are emitted verbatim from `Variable::default_value` so hex literals
+/// like `0x8008_1000` round-trip without loss of formatting.
+fn generate_instance(oml_object: &OmlObject, rs_file: &mut String) -> Result<(), std::fmt::Error> {
+    let type_name = oml_object.instance_type.as_deref().unwrap_or("Unknown");
+
+    writeln!(rs_file, "pub static {}: {} = {} {{", oml_object.name, type_name, type_name)?;
+    for field in &oml_object.variables {
+        let value = field.default_value.as_deref().unwrap_or("todo!()");
+        writeln!(rs_file, "\t{}: {},", field.name, value)?;
+    }
+    writeln!(rs_file, "}};")?;
+
+    Ok(())
 }
 
 /// Capitalises the first character of a string, leaving the rest unchanged.
