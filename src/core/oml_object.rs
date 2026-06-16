@@ -11,6 +11,9 @@ pub enum ObjectType {
     ENUM,
     CLASS,
     STRUCT,
+    /// A named static instance of a struct/class type.
+    /// `OmlObject::name` is the instance name; `OmlObject::instance_type` holds the type name.
+    INSTANCE,
     UNDECIDED
 }
 
@@ -43,13 +46,19 @@ pub struct Variable {
     pub var_type: String,
     pub array_kind: ArrayKind,
     pub name: String,
+    /// Literal value string for instance fields (e.g. `"1"`, `"0x8008_1000"`).
+    /// `None` for ordinary struct/class field declarations.
+    pub default_value: Option<String>,
 }
 
 #[derive(Debug)]
 pub struct OmlObject {
     pub oml_type: ObjectType,
     pub name: String,
-    pub variables: Vec<Variable>
+    pub variables: Vec<Variable>,
+    /// For `INSTANCE` objects: the name of the type being instantiated.
+    /// `None` for all other object types.
+    pub instance_type: Option<String>,
 }
 
 /// Groups all OML objects parsed from a single file.
@@ -65,6 +74,7 @@ impl OmlObject {
     const CLASS_NAME: &'static str = "class";
     const ENUM_NAME: &'static str = "enum";
     const STRUCT_NAME: &'static str = "struct";
+    const INSTANCE_NAME: &'static str = "instance";
 
     pub const BUILTIN_TYPES: &'static [&'static str] = &[
         "int8", "int16", "int32", "int64",
@@ -86,8 +96,8 @@ impl OmlObject {
         let object_names: HashSet<&str> = objects.iter().map(|o| o.name.as_str()).collect();
 
         for obj in objects {
-            // Enums don't have typed variables
-            if obj.oml_type == ObjectType::ENUM {
+            // Enums and instances don't have typed variable declarations to validate.
+            if obj.oml_type == ObjectType::ENUM || obj.oml_type == ObjectType::INSTANCE {
                 continue;
             }
             for var in &obj.variables {
@@ -198,9 +208,10 @@ impl OmlObject {
                 }
 
                 let obj_type = match tokens[0] {
-                    Self::CLASS_NAME => Some(ObjectType::CLASS),
-                    Self::ENUM_NAME => Some(ObjectType::ENUM),
-                    Self::STRUCT_NAME => Some(ObjectType::STRUCT),
+                    Self::CLASS_NAME    => Some(ObjectType::CLASS),
+                    Self::ENUM_NAME     => Some(ObjectType::ENUM),
+                    Self::STRUCT_NAME   => Some(ObjectType::STRUCT),
+                    Self::INSTANCE_NAME => Some(ObjectType::INSTANCE),
                     _ => None,
                 };
 
@@ -209,10 +220,28 @@ impl OmlObject {
                         oml_type,
                         name: String::from("Nothing"),
                         variables: vec![],
+                        instance_type: None,
                     };
-                    if tokens.len() > 1 {
+
+                    if obj.oml_type == ObjectType::INSTANCE {
+                        // Syntax: instance NAME: TypeName { ... }
+                        // Join remaining tokens and split on ':' to separate name from type.
+                        let rest = tokens[1..].join(" ");
+                        let rest = rest.trim_end_matches('{').trim();
+                        let parts: Vec<&str> = rest.splitn(2, ':').collect();
+                        if parts.len() == 2 {
+                            obj.assign_obj_name(parts[0].trim())?;
+                            obj.instance_type = Some(parts[1].trim().to_string());
+                        } else {
+                            return Err(format!(
+                                "Instance declaration must be 'instance NAME: TypeName', got: '{}'",
+                                rest
+                            ).into());
+                        }
+                    } else if tokens.len() > 1 {
                         obj.assign_obj_name(tokens[1])?;
                     }
+
                     current = Some(obj);
                 }
 
@@ -226,7 +255,11 @@ impl OmlObject {
                 // finish the current object
                 if let Some(mut obj) = current.take() {
                     if !body_lines.is_empty() {
-                        obj.variables = Self::extract_object_variables(body_lines.drain(..).collect())?;
+                        obj.variables = if obj.oml_type == ObjectType::INSTANCE {
+                            Self::parse_instance_fields(body_lines.drain(..).collect())?
+                        } else {
+                            Self::extract_object_variables(body_lines.drain(..).collect())?
+                        };
                     }
                     results.push(obj);
                 }
@@ -341,6 +374,48 @@ impl OmlObject {
         Ok(vars)
     }
 
+    /// Parse the body of an `instance` block into a list of field assignments.
+    ///
+    /// Each line must have the form `field_name = value;` where `value` is any
+    /// integer literal (decimal or `0x`-prefixed hex).  The resulting `Variable`
+    /// carries the field name in `name` and the raw value string in `default_value`;
+    /// `var_type` is empty because the type is known from the parent struct definition.
+    fn parse_instance_fields(lines: Vec<String>) -> Result<Vec<Variable>, Box<dyn std::error::Error>> {
+        let mut fields = Vec::new();
+
+        for line in lines {
+            let cleaned = line.trim().trim_end_matches(';').trim().to_string();
+            if cleaned.is_empty() {
+                continue;
+            }
+
+            let eq_pos = cleaned.find('=').ok_or_else(|| {
+                format!("Instance field must be 'name = value', got: '{}'", cleaned)
+            })?;
+
+            let name = cleaned[..eq_pos].trim().to_string();
+            let value = cleaned[eq_pos + 1..].trim().to_string();
+
+            if !Self::is_valid_name(&name) {
+                return Err(format!("Invalid field name '{}' in instance body", name).into());
+            }
+            if value.is_empty() {
+                return Err(format!("Missing value for field '{}' in instance body", name).into());
+            }
+
+            fields.push(Variable {
+                var_mod: vec![],
+                visibility: VariableVisibility::PUBLIC,
+                var_type: String::new(),
+                array_kind: ArrayKind::None,
+                name,
+                default_value: Some(value),
+            });
+        }
+
+        Ok(fields)
+    }
+
     fn parse_variable_declaration(line: &str) -> Result<Variable, String> {
         let tokens: Vec<&str> = line.split_whitespace().collect();
 
@@ -447,6 +522,7 @@ impl OmlObject {
             var_type: final_type,
             array_kind,
             name: final_name,
+            default_value: None,
         })
     }
 
@@ -501,6 +577,7 @@ mod test {
             oml_type: ObjectType::UNDECIDED,
             name: String::new(),
             variables: vec![],
+            instance_type: None,
         };
 
         for valid_name in VALID_NAMES {
@@ -766,8 +843,8 @@ mod test {
             "#;
 
             let vars = vec![
-                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), array_kind: ArrayKind::None, name: String::from("x") },
-                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), array_kind: ArrayKind::None, name: String::from("y") },
+                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), array_kind: ArrayKind::None, name: String::from("x"), default_value: None },
+                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), array_kind: ArrayKind::None, name: String::from("y"), default_value: None },
             ];
 
             let result = OmlObject::scan_file(content.to_string());
@@ -804,8 +881,8 @@ mod test {
             "#;
 
             let vars = vec![
-                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), array_kind: ArrayKind::None, name: String::from("x") },
-                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), array_kind: ArrayKind::None, name: String::from("y") },
+                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), array_kind: ArrayKind::None, name: String::from("x"), default_value: None },
+                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), array_kind: ArrayKind::None, name: String::from("y"), default_value: None },
             ];
 
             let result = OmlObject::scan_file(content.to_string());
@@ -817,6 +894,86 @@ mod test {
             let result2 = OmlObject::scan_file(content2.to_string());
             assert!(result2.is_ok());
             assert_eq!(result2.unwrap().len(), 0);
+        }
+    }
+
+    #[cfg(test)]
+    mod instance_tests {
+        use super::*;
+
+        #[test]
+        fn test_instance_parses_basic_fields() {
+            let content = r#"
+                instance TASK_L: TaskConfig {
+                    priority = 1;
+                    stack_size = 4096;
+                }
+            "#;
+            let result = OmlObject::scan_file(content.to_string());
+            assert!(result.is_ok(), "scan_file failed: {:?}", result.err());
+            let objects = result.unwrap();
+            assert_eq!(objects.len(), 1);
+            let inst = &objects[0];
+            assert_eq!(inst.oml_type, ObjectType::INSTANCE);
+            assert_eq!(inst.name, "TASK_L");
+            assert_eq!(inst.instance_type.as_deref(), Some("TaskConfig"));
+            assert_eq!(inst.variables.len(), 2);
+            assert_eq!(inst.variables[0].name, "priority");
+            assert_eq!(inst.variables[0].default_value.as_deref(), Some("1"));
+            assert_eq!(inst.variables[1].name, "stack_size");
+            assert_eq!(inst.variables[1].default_value.as_deref(), Some("4096"));
+        }
+
+        #[test]
+        fn test_instance_preserves_hex_literals() {
+            let content = r#"
+                instance TASK_H: TaskConfig {
+                    memory_start = 0x8008_1000;
+                    exclusive_cap_mask = 0x00000001;
+                }
+            "#;
+            let result = OmlObject::scan_file(content.to_string());
+            assert!(result.is_ok());
+            let objects = result.unwrap();
+            assert_eq!(objects.len(), 1);
+            let inst = &objects[0];
+            assert_eq!(inst.variables[0].name, "memory_start");
+            assert_eq!(inst.variables[0].default_value.as_deref(), Some("0x8008_1000"));
+            assert_eq!(inst.variables[1].name, "exclusive_cap_mask");
+            assert_eq!(inst.variables[1].default_value.as_deref(), Some("0x00000001"));
+        }
+
+        #[test]
+        fn test_instance_and_struct_in_same_file() {
+            let content = r#"
+                struct TaskConfig {
+                    uint8 priority;
+                    uint32 stack_size;
+                }
+
+                instance TASK_L: TaskConfig {
+                    priority = 1;
+                    stack_size = 4096;
+                }
+            "#;
+            let result = OmlObject::scan_file(content.to_string());
+            assert!(result.is_ok());
+            let objects = result.unwrap();
+            assert_eq!(objects.len(), 2);
+            assert_eq!(objects[0].oml_type, ObjectType::STRUCT);
+            assert_eq!(objects[1].oml_type, ObjectType::INSTANCE);
+            assert_eq!(objects[1].instance_type.as_deref(), Some("TaskConfig"));
+        }
+
+        #[test]
+        fn test_instance_field_without_semicolon_fails() {
+            let content = r#"
+                instance BAD: TaskConfig {
+                    priority 1
+                }
+            "#;
+            let result = OmlObject::scan_file(content.to_string());
+            assert!(result.is_err(), "expected parse error for missing '='");
         }
     }
 }

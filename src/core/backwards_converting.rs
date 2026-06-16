@@ -1,4 +1,4 @@
-use crate::core::oml_object::{
+﻿use crate::core::oml_object::{
     OmlObject, ObjectType, VariableModifier, VariableVisibility, ArrayKind
 };
 use crate::core::generate::Generate;
@@ -19,6 +19,7 @@ impl Generate for OmlGenerator {
                 ObjectType::ENUM => generate_enum(obj, &mut oml_file)?,
                 ObjectType::CLASS => generate_class(obj, &mut oml_file)?,
                 ObjectType::STRUCT => generate_struct(obj, &mut oml_file)?,
+                ObjectType::INSTANCE => {},
                 ObjectType::UNDECIDED => return Err("Cannot generate OML for UNDECIDED object type".into()),
             }
             if i < oml_objects.len() - 1 {
