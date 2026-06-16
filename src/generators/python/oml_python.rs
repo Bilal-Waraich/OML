@@ -194,6 +194,7 @@ fn parse_python_classvar(line: &str) -> Option<Variable> {
         var_type,
         array_kind,
         name,
+        default_value: None,
     })
 }
 
@@ -220,6 +221,7 @@ fn parse_python_dataclass_field(line: &str, is_optional: bool, is_frozen: bool) 
             var_type,
             array_kind,
             name,
+            default_value: None,
         });
     }
 
@@ -230,6 +232,7 @@ fn parse_python_dataclass_field(line: &str, is_optional: bool, is_frozen: bool) 
         var_type,
         array_kind,
         name,
+        default_value: None,
     })
 }
 

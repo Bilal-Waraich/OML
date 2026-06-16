@@ -183,6 +183,7 @@ fn parse_ts_field(line: &str) -> Option<Variable> {
         var_type,
         array_kind,
         name,
+        default_value: None,
     })
 }
 
